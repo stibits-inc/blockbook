@@ -17,6 +17,7 @@ import (
 	"github.com/martinboehm/btcutil/hdkeychain"
 	"github.com/martinboehm/btcutil/txscript"
 	"github.com/trezor/blockbook/bchain"
+	"fmt"
 )
 
 // temp params for signet(wait btcd commit)
@@ -115,9 +116,9 @@ func (p *BitcoinParser) GetScriptFromAddrDesc(addrDesc bchain.AddressDescriptor)
 // IsAddrDescIndexable returns true if AddressDescriptor should be added to index
 // empty or OP_RETURN scripts are not indexed
 func (p *BitcoinParser) IsAddrDescIndexable(addrDesc bchain.AddressDescriptor) bool {
-	if len(addrDesc) == 0 || addrDesc[0] == txscript.OP_RETURN {
+	/*if len(addrDesc) == 0 || addrDesc[0] == txscript.OP_RETURN {
 		return false
-	}
+	}*/
 	return true
 }
 
@@ -146,16 +147,20 @@ func (p *BitcoinParser) TryParseOPReturn(script []byte) string {
 		if script[1] == txscript.OP_PUSHDATA1 && len(script) > 2 {
 			l = int(script[2])
 			data = script[3:]
+			fmt.Println("Log TryParseOPReturn 1" + data)
 			if l != len(data) {
 				l = int(script[1])
 				data = script[2:]
+				fmt.Println("Log TryParseOPReturn 12" + data)
 			}
 		} else if script[1] == txscript.OP_PUSHDATA2 && len(script) > 3 {
 			l = int(script[2]) + int(script[3])<<8
 			data = script[4:]
+			fmt.Println("Log TryParseOPReturn 3" + data)
 		} else {
 			l = int(script[1])
 			data = script[2:]
+			fmt.Println("Log TryParseOPReturn 4" + data)
 		}
 		if l == len(data) {
 			var ed string
@@ -170,6 +175,8 @@ func (p *BitcoinParser) TryParseOPReturn(script []byte) string {
 			} else {
 				ed = hex.EncodeToString(data)
 			}
+			fmt.Println("Log TryParseOPReturn 5" + data)
+			fmt.Println("Log TryParseOPReturn 5" + ed)
 			return "OP_RETURN " + ed
 		}
 	}
