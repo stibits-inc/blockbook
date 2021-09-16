@@ -15,9 +15,9 @@ import (
 	"github.com/martinboehm/btcutil"
 	"github.com/martinboehm/btcutil/chaincfg"
 	"github.com/martinboehm/btcutil/hdkeychain"
-	"github.com/martinboehm/btcutil/txscript"
-	"github.com/trezor/blockbook/bchain"
-	"fmt"
+        "github.com/martinboehm/btcutil/txscript"
+        "github.com/trezor/blockbook/bchain"
+
 )
 
 // temp params for signet(wait btcd commit)
@@ -116,9 +116,9 @@ func (p *BitcoinParser) GetScriptFromAddrDesc(addrDesc bchain.AddressDescriptor)
 // IsAddrDescIndexable returns true if AddressDescriptor should be added to index
 // empty or OP_RETURN scripts are not indexed
 func (p *BitcoinParser) IsAddrDescIndexable(addrDesc bchain.AddressDescriptor) bool {
-	/*if len(addrDesc) == 0 || addrDesc[0] == txscript.OP_RETURN {
+	if len(addrDesc) == 0 || addrDesc[0] == txscript.OP_RETURN {
 		return false
-	}*/
+	}
 	return true
 }
 
@@ -147,20 +147,16 @@ func (p *BitcoinParser) TryParseOPReturn(script []byte) string {
 		if script[1] == txscript.OP_PUSHDATA1 && len(script) > 2 {
 			l = int(script[2])
 			data = script[3:]
-			fmt.Println("Log TryParseOPReturn 1" + data)
 			if l != len(data) {
 				l = int(script[1])
 				data = script[2:]
-				fmt.Println("Log TryParseOPReturn 12" + data)
 			}
 		} else if script[1] == txscript.OP_PUSHDATA2 && len(script) > 3 {
 			l = int(script[2]) + int(script[3])<<8
 			data = script[4:]
-			fmt.Println("Log TryParseOPReturn 3" + data)
 		} else {
 			l = int(script[1])
 			data = script[2:]
-			fmt.Println("Log TryParseOPReturn 4" + data)
 		}
 		if l == len(data) {
 			var ed string
@@ -175,8 +171,6 @@ func (p *BitcoinParser) TryParseOPReturn(script []byte) string {
 			} else {
 				ed = hex.EncodeToString(data)
 			}
-			fmt.Println("Log TryParseOPReturn 5" + data)
-			fmt.Println("Log TryParseOPReturn 5" + ed)
 			return "OP_RETURN " + ed
 		}
 	}
@@ -371,8 +365,12 @@ func (p *BitcoinParser) addrDescFromExtKey(extKey *hdkeychain.ExtendedKey) (bcha
 	} else if extKey.Version() == p.XPubMagicSegwitNative {
 		a, err = btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(extKey.PubKeyBytes()), p.Params)
 	} else {
-		// default to P2PKH address
-		a, err = extKey.Address(p.Params)
+		if p.XPubMagicSegwitNative == 0 {
+			//default to P2PKH address
+			a, err = extKey.Address(p.Params)
+		}else {
+			a, err = btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(extKey.PubKeyBytes()), p.Params)
+		}
 	}
 	if err != nil {
 		return nil, err
@@ -450,7 +448,7 @@ func (p *BitcoinParser) DerivationBasePath(xpub string) (string, error) {
 	if extKey.Version() == p.XPubMagicSegwitP2sh {
 		bip = "49"
 	} else if extKey.Version() == p.XPubMagicSegwitNative {
-		bip = "84"
+		bip = "44"
 	} else {
 		bip = "44"
 	}

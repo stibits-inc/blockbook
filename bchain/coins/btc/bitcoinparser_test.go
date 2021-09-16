@@ -87,12 +87,12 @@ func TestGetAddrDescFromVout(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{
-			name:    "P2PKH",
-			args:    args{vout: bchain.Vout{ScriptPubKey: bchain.ScriptPubKey{Hex: "76a914be027bf3eac907bd4ac8cb9c5293b6f37662722088ac"}}},
-			want:    "76a914be027bf3eac907bd4ac8cb9c5293b6f37662722088ac",
-			wantErr: false,
-		},
+                {
+                        name:    "P2PKH",
+                        args:    args{vout: bchain.Vout{ScriptPubKey: bchain.ScriptPubKey{Hex: "76a914be027bf3eac907bd4ac8cb9c5293b6f37662722088ac"}}},
+                        want:    "76a914be027bf3eac907bd4ac8cb9c5293b6f37662722088ac",
+                        wantErr: false,
+                },
 		{
 			name:    "P2PK compressed 1P3rU1Nk1pmc2BiWC8dEy9bZa1ZbMp5jfg",
 			args:    args{vout: bchain.Vout{ScriptPubKey: bchain.ScriptPubKey{Hex: "21020e46e79a2a8d12b9b5d12c7a91adb4e454edfae43c0a0cb805427d2ac7613fd9ac"}}},
