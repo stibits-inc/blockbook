@@ -31,6 +31,12 @@ func Test_GetAddrDescFromAddress_Mainnet(t *testing.T) {
 		wantErr bool
 	}{
 		{
+			name:    "P2PKH",//RVN TESTNET
+			args:    args{address: "mgX8ikSJHg8tD2DvfztskAFXykBi11AMbb"},
+			want:    "76a9140b00d42bca68f0a1a7707aa3ab34193792e94d0888ac",
+			wantErr: false,
+		},
+		{
 			name:    "P2PKH1",
 			args:    args{address: "RAoGkGhKwzxLnstApumYPD2eTrAJ849cga"},
 			want:    "76a91410a8805f1a6af1a5927088544b0b6ec7d6f0ab8b88ac",
@@ -70,6 +76,81 @@ func Test_GetAddrDescFromAddress_Mainnet(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetAddrDescFromVout(t *testing.T) {
+        type args struct {
+                vout bchain.Vout
+        }
+        tests := []struct {
+                name    string
+                args    args
+                want    string
+                wantErr bool
+        }{
+                {
+                        name:    "P2PKH",
+                        args:    args{vout: bchain.Vout{ScriptPubKey: bchain.ScriptPubKey{Hex: "76a9142ee749118b14c1b3a9aa68f27c26f28e1747735388acc01572766e74084d454c474149444900e1f5050000000075"}}},
+                        want:    "76a9142ee749118b14c1b3a9aa68f27c26f28e1747735388ac",
+                        wantErr: false,
+                },
+
+        }
+        parser := NewRavencoinParser(GetChainParams("main"), &btc.Configuration{})
+
+        for _, tt := range tests {
+                t.Run(tt.name, func(t *testing.T) {
+                        got, err := parser.GetAddrDescFromVout(&tt.args.vout)
+                        if (err != nil) != tt.wantErr {
+                                t.Errorf("GetAddrDescFromVout() error = %v, wantErr %v", err, tt.wantErr)
+                                return
+                        }
+                        h := hex.EncodeToString(got)
+                        if !reflect.DeepEqual(h, tt.want) {
+                                t.Errorf("GetAddrDescFromVout() = %v, want %v", h, tt.want)
+                        }
+                })
+        }
+}
+
+func TestGetAddressesFromAddrDesc(t *testing.T) {
+        type args struct {
+                script string
+        }
+        tests := []struct {
+                name    string
+                args    args
+                want    []string
+                want2   bool
+                wantErr bool
+        }{
+                {
+                        name:    "P2PKH",
+                        args:    args{script: "76a914022469968d225744fdfe1f66eefd49e65edf15fd88acc01572766e740842414c415445524f241b0f000000000075"},
+                        want:    []string{"R9UX3t56YiDQuxZZBQVztXgPjs7a1fy7xo"},
+                        want2:   true,
+                        wantErr: false,
+                },
+        }
+
+        parser := NewRavencoinParser(GetChainParams("main"), &btc.Configuration{})
+
+        for _, tt := range tests {
+                t.Run(tt.name, func(t *testing.T) {
+                        b, _ := hex.DecodeString(tt.args.script)
+                        got, got2, err := parser.GetAddressesFromAddrDesc(b)
+                        if (err != nil) != tt.wantErr {
+                                t.Errorf("GetAddressesFromAddrDesc() error = %v, wantErr %v", err, tt.wantErr)
+                                return
+                        }
+                        if !reflect.DeepEqual(got, tt.want) {
+                                t.Errorf("GetAddressesFromAddrDesc() = %v, want %v", got, tt.want)
+                        }
+                        if !reflect.DeepEqual(got2, tt.want2) {
+                                t.Errorf("GetAddressesFromAddrDesc() = %v, want %v", got2, tt.want2)
+                        }
+                })
+        }
 }
 
 var (
