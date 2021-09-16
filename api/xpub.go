@@ -435,7 +435,7 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 						uBalSat.Add(&uBalSat, tx.getAddrVoutValue(ad.addrDesc))
 						uBalSat.Sub(&uBalSat, tx.getAddrVinValue(ad.addrDesc))
 						// mempool txs are returned only on the first page, uniquely and filtered
-						if page == 0 && !foundTx && (txidFilter == nil || txidFilter(&txid, ad)) {
+						if page == 0 && !foundTx/* && (txidFilter == nil || txidFilter(&txid, ad))*/ {
 							mempoolEntries = append(mempoolEntries, bchain.MempoolTxidEntry{Txid: txid.txid, Time: uint32(tx.Blocktime)})
 						}
 					}
