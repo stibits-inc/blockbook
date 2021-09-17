@@ -774,6 +774,21 @@ func (b *EthereumRPC) EthereumTypeGetNonce(addrDesc bchain.AddressDescriptor) (u
 	return b.client.NonceAt(ctx, ethcommon.BytesToAddress(addrDesc), nil)
 }
 
+
+// EthereumTypeGetGasPrice returns actual gasPrice of Ehereum chain
+func (b *EthereumRPC) EthereumTypeGetGasPrice() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), b.timeout)
+	defer cancel()
+	var result rpcGasPrice
+	err := b.rpc.CallContext(ctx, &result.GasPrice, "eth_gasPrice")
+	if err != nil {
+		return "", err
+	} else if result.GasPrice == "" {
+		return "", errors.New("ETH GasPrice NotFound")
+	}
+	return result.GasPrice, nil
+}
+
 // GetChainParser returns ethereum BlockChainParser
 func (b *EthereumRPC) GetChainParser() bchain.BlockChainParser {
 	return b.Parser

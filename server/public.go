@@ -190,6 +190,7 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 	serveMux.HandleFunc(path+"api/v2/balancehistory/", s.jsonHandler(s.apiBalanceHistory, apiDefault))
 	serveMux.HandleFunc(path+"api/v2/tickers/", s.jsonHandler(s.apiTickers, apiV2))
 	serveMux.HandleFunc(path+"api/v2/tickers-list/", s.jsonHandler(s.apiTickersList, apiV2))
+	serveMux.HandleFunc(path+"api/v2/gasprice/", s.jsonHandler(s.apiGasPrice, apiV2))
 	// socket.io interface
 	serveMux.Handle(path+"socket.io/", s.socketio.GetHandler())
 	// websocket interface
@@ -1263,4 +1264,15 @@ func (s *PublicServer) apiEstimateFee(r *http.Request, apiVersion int) (interfac
 		}
 	}
 	return nil, api.NewAPIError("Missing parameter 'number of blocks'", true)
+}
+
+func (s *PublicServer) apiGasPrice(r *http.Request, apiVersion int) (interface{}, error) {
+	type resultGAsPrice struct {
+		Result string `json:"result"`
+	}
+	var res resultGAsPrice
+	var err error
+	s.metrics.ExplorerViews.With(common.Labels{"action": "api-gasprice"}).Inc()
+	res.Result, err = s.chain.EthereumTypeGetGasPrice()
+	return res, err
 }

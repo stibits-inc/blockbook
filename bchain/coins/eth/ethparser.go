@@ -70,6 +70,10 @@ type rpcLogWithTxHash struct {
 	Hash string `json:"transactionHash"`
 }
 
+type rpcGasPrice struct {
+	GasPrice string    `json:"gasPrice"`
+}
+
 type rpcReceipt struct {
 	GasUsed string    `json:"gasUsed"`
 	Status  string    `json:"status"`
