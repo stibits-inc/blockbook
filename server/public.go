@@ -191,6 +191,7 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 	serveMux.HandleFunc(path+"api/v2/tickers/", s.jsonHandler(s.apiTickers, apiV2))
 	serveMux.HandleFunc(path+"api/v2/tickers-list/", s.jsonHandler(s.apiTickersList, apiV2))
 	serveMux.HandleFunc(path+"api/v2/gasprice/", s.jsonHandler(s.apiGasPrice, apiV2))
+	serveMux.HandleFunc(path+"api/v2/estimategas", s.jsonHandler(s.apiEstimateGas, apiV2))
 	// socket.io interface
 	serveMux.Handle(path+"socket.io/", s.socketio.GetHandler())
 	// websocket interface
@@ -1267,12 +1268,33 @@ func (s *PublicServer) apiEstimateFee(r *http.Request, apiVersion int) (interfac
 }
 
 func (s *PublicServer) apiGasPrice(r *http.Request, apiVersion int) (interface{}, error) {
-	type resultGAsPrice struct {
+	type resultGasPrice struct {
 		Result string `json:"result"`
 	}
-	var res resultGAsPrice
+	var res resultGasPrice
 	var err error
 	s.metrics.ExplorerViews.With(common.Labels{"action": "api-gasprice"}).Inc()
 	res.Result, err = s.chain.EthereumTypeGetGasPrice()
+	return res, err
+}
+
+func (s *PublicServer) apiEstimateGas(r *http.Request, apiVersion int) (interface{}, error) {
+	type resultEstimateGas struct {
+		Result uint64 `json:"result"`
+	}
+	var res resultEstimateGas
+	var err error
+	s.metrics.ExplorerViews.With(common.Labels{"action": "api-estimateGas"}).Inc()
+
+	from := r.URL.Query().Get("from")
+	to := r.URL.Query().Get("to")
+	if from == "" || to =="" {
+		return nil, api.NewAPIError("Missing arguments", true)
+	}
+	params := map[string]interface{} {
+		"from": from,
+		"to": to,
+	}
+	res.Result, err = s.chain.EthereumTypeEstimateGas(params)
 	return res, err
 }
