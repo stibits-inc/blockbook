@@ -1187,7 +1187,7 @@ func TestBitcoinParser_DerivationBasePath(t *testing.T) {
 				xpub:   "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs",
 				parser: btcMainParser,
 			},
-			want: "m/44'/0'/0'",
+			want: "m/84'/0'/0'",
 		},
 		{
 			name: "m/49'/0'/55 - not hardened account",

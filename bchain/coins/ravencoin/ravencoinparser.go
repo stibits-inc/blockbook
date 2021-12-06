@@ -100,7 +100,7 @@ func (p *RavencoinParser) GetAddressesFromAddrDesc(addrDesc bchain.AddressDescri
                 }
         }
 
-        return p.BitcoinParser.GetAddressesFromAddrDesc(addressDesc)
+        return p.BitcoinLikeParser.GetAddressesFromAddrDesc(addressDesc)
 }
 
 // PackTx packs transaction to byte array using protobuf
