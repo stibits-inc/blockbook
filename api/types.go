@@ -29,6 +29,8 @@ const (
 	AccountDetailsTokenBalances
 	// AccountDetailsTxidHistory - basic + token balances + txids, subject to paging
 	AccountDetailsTxidHistory
+    // AccountDetailsTxHSpecific - basic + tokens + full tx data specific for Ethereum Only, subject to paging
+    AccountDetailsTxSpecific
 	// AccountDetailsTxHistoryLight - basic + tokens + easily obtained tx data (not requiring requests to backend), subject to paging
 	AccountDetailsTxHistoryLight
 	// AccountDetailsTxHistory - basic + tokens + full tx data, subject to paging

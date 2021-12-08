@@ -31,6 +31,7 @@ type Worker struct {
 	mempool     bchain.Mempool
 	is          *common.InternalState
 	metrics     *common.Metrics
+	rpc         eth.EthereumRpcTxInfo
 }
 
 // NewWorker creates new api worker
@@ -129,6 +130,11 @@ func (w *Worker) GetTransaction(txid string, spendingTxs bool, specificJSON bool
 
 // GetTransactionFromBchainTx reads transaction data from txid
 func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spendingTxs bool, specificJSON bool) (*Tx, error) {
+	type txSpecific struct {
+			*bchain.Tx
+			Vsize int `json:"vsize,omitempty"`
+			Size  int `json:"size,omitempty"`
+	}
 	var err error
 	var ta *db.TxAddresses
 	var tokens []TokenTransfer
@@ -287,6 +293,24 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 			return nil, err
 		}
 	}
+
+	
+	// Serialize the raw JSON into TxSpecific struct
+
+	//Message := []byte("{Logs : 1}")
+
+	/*var txSpec *eth.EthereumRpcTxInfo
+	err = json.Unmarshal(sj, &txSpec)
+
+
+	csd := map[string]interface{} {
+		"transactionIndex" : txSpec.Tx.TransactionIndex,
+		"logs" : txSpec.Receipt.Logs,
+	}
+
+	jsonString, _ := json.Marshal(csd)
+	fmt.Println(jsonString)*/
+
 	// for mempool transaction get first seen time
 	if bchainTx.Confirmations == 0 {
 		bchainTx.Blocktime = int64(w.mempool.GetTransactionTime(bchainTx.Txid))
@@ -792,6 +816,11 @@ func (w *Worker) txFromTxid(txid string, bestheight uint32, option AccountDetail
 			}
 			tx = w.txFromTxAddress(txid, ta, blockInfo, bestheight)
 		}
+	} else if option == AccountDetailsTxSpecific && w.chainType == bchain.ChainEthereumType {
+				tx, err = w.GetTransaction(txid, false, true)
+				if err != nil {
+						return nil, errors.Annotatef(err, "GetTransaction Specific %v", txid)
+				}
 	} else {
 		tx, err = w.GetTransaction(txid, false, false)
 		if err != nil {
