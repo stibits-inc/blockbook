@@ -80,6 +80,10 @@ type rpcReceipt struct {
 	Logs    []*rpcLog `json:"logs"`
 }
 
+type EthereumRpcTxInfo struct {
+	completeTransaction
+}
+
 type completeTransaction struct {
 	Tx      *rpcTransaction `json:"tx"`
 	Receipt *rpcReceipt     `json:"receipt,omitempty"`
