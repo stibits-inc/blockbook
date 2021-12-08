@@ -402,7 +402,7 @@ ConnectLoop:
 	}
 	<-writeBlockDone
 	return err
-}
+} 
 
 type blockResult struct {
 	block *bchain.Block
@@ -449,7 +449,7 @@ func (w *SyncWorker) DisconnectBlocks(lower uint32, higher uint32, hashes []stri
 	ct := w.chain.GetChainParser().GetChainType()
 	if ct == bchain.ChainBitcoinType {
 		return w.db.DisconnectBlockRangeBitcoinType(lower, higher)
-	} else if ct == bchain.ChainEthereumType {
+	} else if ct == bchain.ChainEthereumType || ct == bchain.ChainBscType {
 		return w.db.DisconnectBlockRangeEthereumType(lower, higher)
 	}
 	return errors.New("Unknown chain type")
