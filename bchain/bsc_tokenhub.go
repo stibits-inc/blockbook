@@ -137,8 +137,8 @@ func bindTokenhub(address common.Address, caller bind.ContractCaller, transactor
 // sets the output to result. The result type might be a single field for simple
 // returns, a slice of interfaces for anonymous returns and a struct for named
 // returns.
-func (_Tokenhub *TokenhubRaw) Call(opts *bind.CallOpts, result *[]interface{}, method string, params ...interface{}) error {
-	return _Tokenhub.Contract.TokenhubCaller.contract.Call(opts, &result, method, params...)
+func (_Tokenhub *TokenhubRaw) Call(opts *bind.CallOpts, result []interface{}, method string, params ...interface{}) error {
+	return _Tokenhub.Contract.TokenhubCaller.contract.Call(opts, result, method, params...)
 }
 
 // Transfer initiates a plain transaction to move funds to the contract, calling
@@ -156,8 +156,8 @@ func (_Tokenhub *TokenhubRaw) Transact(opts *bind.TransactOpts, method string, p
 // sets the output to result. The result type might be a single field for simple
 // returns, a slice of interfaces for anonymous returns and a struct for named
 // returns.
-func (_Tokenhub *TokenhubCallerRaw) Call(opts *bind.CallOpts, result *[]interface{}, method string, params ...interface{}) error {
-	return _Tokenhub.Contract.contract.Call(opts, &result, method, params...)
+func (_Tokenhub *TokenhubCallerRaw) Call(opts *bind.CallOpts, result []interface{}, method string, params ...interface{}) error {
+	return _Tokenhub.Contract.contract.Call(opts, result, method, params...)
 }
 
 // Transfer initiates a plain transaction to move funds to the contract, calling
