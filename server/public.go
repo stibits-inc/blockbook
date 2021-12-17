@@ -1029,10 +1029,19 @@ func (s *PublicServer) apiAddress(r *http.Request, apiVersion int) (interface{},
 
 func (s *PublicServer) apiXpub(r *http.Request, apiVersion int) (interface{}, error) {
 	var xpub string
-	i := strings.LastIndex(r.URL.Path, "xpub/")
-	if i > 0 {
-		xpub = r.URL.Path[i+5:]
+	if r.Method == http.MethodPost {
+		data, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			return nil, api.NewAPIError("Missing data", true)
+		}
+		xpub = string(data)
+	} else {
+		i := strings.LastIndex(r.URL.Path, "xpub/")
+		if i > 0 {
+			xpub = r.URL.Path[i+5:]
+		}
 	}
+
 	if len(xpub) == 0 {
 		return nil, api.NewAPIError("Missing xpub", true)
 	}
@@ -1291,13 +1300,18 @@ func (s *PublicServer) apiEstimateGas(r *http.Request, apiVersion int) (interfac
 
 	from := r.URL.Query().Get("from")
 	to := r.URL.Query().Get("to")
-	if from == "" || to =="" {
+	if from == "" || to == "" {
 		return nil, api.NewAPIError("Missing arguments", true)
 	}
-	params := map[string]interface{} {
+	params := map[string]interface{}{
 		"from": from,
-		"to": to,
+		"to":   to,
 	}
 	res.Result, err = s.chain.EthereumTypeEstimateGas(params)
 	return res, err
+}
+
+func main() {
+	var server PublicServer
+	server.ConnectFullPublicInterface()
 }
