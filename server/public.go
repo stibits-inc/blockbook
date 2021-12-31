@@ -27,6 +27,7 @@ import (
 
 const txsOnPage = 25
 const blocksOnPage = 50
+const blocksInAPI = 50
 const mempoolTxsOnPage = 50
 const txsInAPI = 1000
 
@@ -164,6 +165,7 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 		serveMux.HandleFunc(path+"api/v1/address/", s.jsonHandler(s.apiAddress, apiV1))
 		serveMux.HandleFunc(path+"api/v1/utxo/", s.jsonHandler(s.apiUtxo, apiV1))
 		serveMux.HandleFunc(path+"api/v1/block/", s.jsonHandler(s.apiBlock, apiV1))
+		serveMux.HandleFunc(path+"api/v1/blocks/", s.jsonHandler(s.apiBlocks, apiV1))
 		serveMux.HandleFunc(path+"api/v1/sendtx/", s.jsonHandler(s.apiSendTx, apiV1))
 		serveMux.HandleFunc(path+"api/v1/estimatefee/", s.jsonHandler(s.apiEstimateFee, apiV1))
 	}
@@ -174,6 +176,7 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 	serveMux.HandleFunc(path+"api/xpub/", s.jsonHandler(s.apiXpub, apiDefault))
 	serveMux.HandleFunc(path+"api/utxo/", s.jsonHandler(s.apiUtxo, apiDefault))
 	serveMux.HandleFunc(path+"api/block/", s.jsonHandler(s.apiBlock, apiDefault))
+	serveMux.HandleFunc(path+"api/blocks/", s.jsonHandler(s.apiBlocks, apiDefault))
 	serveMux.HandleFunc(path+"api/sendtx/", s.jsonHandler(s.apiSendTx, apiDefault))
 	serveMux.HandleFunc(path+"api/estimatefee/", s.jsonHandler(s.apiEstimateFee, apiDefault))
 	serveMux.HandleFunc(path+"api/balancehistory/", s.jsonHandler(s.apiBalanceHistory, apiDefault))
@@ -185,6 +188,7 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 	serveMux.HandleFunc(path+"api/v2/xpub/", s.jsonHandler(s.apiXpub, apiV2))
 	serveMux.HandleFunc(path+"api/v2/utxo/", s.jsonHandler(s.apiUtxo, apiV2))
 	serveMux.HandleFunc(path+"api/v2/block/", s.jsonHandler(s.apiBlock, apiV2))
+	serveMux.HandleFunc(path+"api/v2/blocks/", s.jsonHandler(s.apiBlocks, apiV2))
 	serveMux.HandleFunc(path+"api/v2/sendtx/", s.jsonHandler(s.apiSendTx, apiV2))
 	serveMux.HandleFunc(path+"api/v2/estimatefee/", s.jsonHandler(s.apiEstimateFee, apiV2))
 	serveMux.HandleFunc(path+"api/v2/feestats/", s.jsonHandler(s.apiFeeStats, apiV2))
@@ -1131,6 +1135,22 @@ func (s *PublicServer) apiBalanceHistory(r *http.Request, apiVersion int) (inter
 		}
 	}
 	return history, err
+}
+
+func (s *PublicServer) apiBlocks(r *http.Request, apiVersion int) (interface{}, error) {
+	r.Header.Add("Access-Control-Allow-Origin", "*")
+	var blocks *api.Blocks
+	var err error
+	s.metrics.ExplorerViews.With(common.Labels{"action": "api-blocks"}).Inc()
+	if i := strings.LastIndexByte(r.URL.Path, '/'); i > 0 {
+		page, ec := strconv.Atoi(r.URL.Query().Get("page"))
+		if ec != nil {
+			page = 0
+		}
+		blocks, err = s.api.GetBlocks(page, blocksInAPI)
+
+	}
+	return blocks, err
 }
 
 func (s *PublicServer) apiBlock(r *http.Request, apiVersion int) (interface{}, error) {
