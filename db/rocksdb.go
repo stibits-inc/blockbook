@@ -1237,6 +1237,15 @@ type BlockInfo struct {
 	Height uint32 // Height is not packed!
 }
 
+type BlockInfoDetails struct {
+	Hash          string
+	Time          int64
+	Txs           uint32
+	Size          uint32
+	Height        uint32 // Height is not packed!
+	Confirmations int
+}
+
 func (d *RocksDB) packBlockInfo(block *BlockInfo) ([]byte, error) {
 	packed := make([]byte, 0, 64)
 	varBuf := make([]byte, vlq.MaxLen64)
@@ -1283,6 +1292,28 @@ func (d *RocksDB) unpackBlockInfo(buf []byte) (*BlockInfo, error) {
 	}, nil
 }
 
+func (d *RocksDB) unpackBlockInfoDetails(buf []byte) (*BlockInfoDetails, error) {
+	pl := d.chainParser.PackedTxidLen()
+	// minimum length is PackedTxidLen + 4 bytes time + 1 byte txs + 1 byte size
+	if len(buf) < pl+4+2 {
+		return nil, nil
+	}
+	txid, err := d.chainParser.UnpackBlockHash(buf[:pl])
+	if err != nil {
+		return nil, err
+	}
+	t := unpackUint(buf[pl:])
+	txs, l := unpackVaruint(buf[pl+4:])
+	size, _ := unpackVaruint(buf[pl+4+l:])
+	return &BlockInfoDetails{
+		Hash:          txid,
+		Time:          int64(t),
+		Txs:           uint32(txs),
+		Size:          uint32(size),
+		Confirmations: 0,
+	}, nil
+}
+
 // GetBestBlock returns the block hash of the block with highest height in the db
 func (d *RocksDB) GetBestBlock() (uint32, string, error) {
 	it := d.db.NewIteratorCF(d.ro, d.cfh[cfHeight])
@@ -1324,6 +1355,21 @@ func (d *RocksDB) GetBlockInfo(height uint32) (*BlockInfo, error) {
 	}
 	defer val.Free()
 	bi, err := d.unpackBlockInfo(val.Data())
+	if err != nil || bi == nil {
+		return nil, err
+	}
+	bi.Height = height
+	return bi, err
+}
+
+func (d *RocksDB) GetBlockInfoDetails(height uint32) (*BlockInfoDetails, error) {
+	key := packUint(height)
+	val, err := d.db.GetCF(d.ro, d.cfh[cfHeight], key)
+	if err != nil {
+		return nil, err
+	}
+	defer val.Free()
+	bi, err := d.unpackBlockInfoDetails(val.Data())
 	if err != nil || bi == nil {
 		return nil, err
 	}

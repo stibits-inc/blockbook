@@ -131,9 +131,9 @@ func (w *Worker) GetTransaction(txid string, spendingTxs bool, specificJSON bool
 // GetTransactionFromBchainTx reads transaction data from txid
 func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spendingTxs bool, specificJSON bool) (*Tx, error) {
 	type txSpecific struct {
-			*bchain.Tx
-			Vsize int `json:"vsize,omitempty"`
-			Size  int `json:"size,omitempty"`
+		*bchain.Tx
+		Vsize int `json:"vsize,omitempty"`
+		Size  int `json:"size,omitempty"`
 	}
 	var err error
 	var ta *db.TxAddresses
@@ -294,7 +294,6 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 		}
 	}
 
-	
 	// Serialize the raw JSON into TxSpecific struct
 
 	//Message := []byte("{Logs : 1}")
@@ -817,10 +816,10 @@ func (w *Worker) txFromTxid(txid string, bestheight uint32, option AccountDetail
 			tx = w.txFromTxAddress(txid, ta, blockInfo, bestheight)
 		}
 	} else if option == AccountDetailsTxSpecific && w.chainType == bchain.ChainEthereumType {
-				tx, err = w.GetTransaction(txid, false, true)
-				if err != nil {
-						return nil, errors.Annotatef(err, "GetTransaction Specific %v", txid)
-				}
+		tx, err = w.GetTransaction(txid, false, true)
+		if err != nil {
+			return nil, errors.Annotatef(err, "GetTransaction Specific %v", txid)
+		}
 	} else {
 		tx, err = w.GetTransaction(txid, false, false)
 		if err != nil {
@@ -1368,6 +1367,41 @@ func (w *Worker) GetBlocks(page int, blocksOnPage int) (*Blocks, error) {
 			r.Blocks = r.Blocks[:i]
 			break
 		}
+		r.Blocks[i-from] = *bi
+	}
+	glog.Info("GetBlocks page ", page, ", ", time.Since(start))
+	return r, nil
+}
+
+func (w *Worker) GetBlocksDetails(page int, blocksOnPage int) (*BlocksDetails, error) {
+	start := time.Now()
+	page--
+	if page < 0 {
+		page = 0
+	}
+	b, _, err := w.db.GetBestBlock()
+	bestheight := int(b)
+	if err != nil {
+		return nil, errors.Annotatef(err, "GetBestBlock")
+	}
+	pg, from, to, page := computePaging(bestheight+1, page, blocksOnPage)
+	r := &BlocksDetails{Paging: pg}
+	r.Blocks = make([]db.BlockInfoDetails, to-from)
+	for i := from; i < to; i++ {
+		bi, err := w.db.GetBlockInfoDetails(uint32(bestheight - i))
+		if err != nil {
+			return nil, err
+		}
+		if bi == nil {
+			r.Blocks = r.Blocks[:i]
+			break
+		}
+
+		blockinfo, err1 := w.chain.GetBlockInfo(bi.Hash)
+		if err1 != nil {
+			return nil, err1
+		}
+		bi.Confirmations = blockinfo.Confirmations
 		r.Blocks[i-from] = *bi
 	}
 	glog.Info("GetBlocks page ", page, ", ", time.Since(start))
