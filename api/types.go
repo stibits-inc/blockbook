@@ -29,8 +29,8 @@ const (
 	AccountDetailsTokenBalances
 	// AccountDetailsTxidHistory - basic + token balances + txids, subject to paging
 	AccountDetailsTxidHistory
-    // AccountDetailsTxHSpecific - basic + tokens + full tx data specific for Ethereum Only, subject to paging
-    AccountDetailsTxSpecific
+	// AccountDetailsTxHSpecific - basic + tokens + full tx data specific for Ethereum Only, subject to paging
+	AccountDetailsTxSpecific
 	// AccountDetailsTxHistoryLight - basic + tokens + easily obtained tx data (not requiring requests to backend), subject to paging
 	AccountDetailsTxHistoryLight
 	// AccountDetailsTxHistory - basic + tokens + full tx data, subject to paging
@@ -374,6 +374,11 @@ func (a BalanceHistories) SortAndAggregate(groupByTime uint32) BalanceHistories 
 type Blocks struct {
 	Paging
 	Blocks []db.BlockInfo `json:"blocks"`
+}
+
+type BlocksDetails struct {
+	Paging
+	Blocks []db.BlockInfoDetails `json:"blocks"`
 }
 
 // BlockInfo contains extended block header data and a list of block txids
