@@ -419,6 +419,10 @@ func (b *EthereumRPC) GetBlockHash(height uint32) (string, error) {
 	return h.Hash().Hex(), nil
 }
 
+func (b *EthereumRPC) GetBlockFull(hash string) (*bchain.Block, error) {
+	return nil, errors.New("Not implemented")
+}
+
 func (b *EthereumRPC) ethHeaderToBlockHeader(h *rpcHeader) (*bchain.BlockHeader, error) {
 	height, err := ethNumber(h.Number)
 	if err != nil {
@@ -773,7 +777,6 @@ func (b *EthereumRPC) EthereumTypeGetNonce(addrDesc bchain.AddressDescriptor) (u
 	defer cancel()
 	return b.client.NonceAt(ctx, ethcommon.BytesToAddress(addrDesc), nil)
 }
-
 
 // EthereumTypeGetGasPrice returns actual gasPrice of Ehereum chain
 func (b *EthereumRPC) EthereumTypeGetGasPrice() (string, error) {

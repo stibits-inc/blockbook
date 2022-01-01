@@ -378,7 +378,7 @@ type Blocks struct {
 
 type BlocksDetails struct {
 	Paging
-	Blocks []db.BlockInfoDetails `json:"blocks"`
+	Blocks []bchain.Block `json:"blocks"`
 }
 
 // BlockInfo contains extended block header data and a list of block txids

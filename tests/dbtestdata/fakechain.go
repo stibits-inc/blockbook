@@ -115,6 +115,23 @@ func getBlockInfo(b *bchain.Block) *bchain.BlockInfo {
 	return bi
 }
 
+func getBlockFull(b *bchain.Block) *bchain.Block {
+
+	return nil
+}
+
+func (c *fakeBlockChain) GetBlockFull(hash string) (v *bchain.Block, err error) {
+	b1 := GetTestBitcoinTypeBlock1(c.Parser)
+	if hash == b1.BlockHeader.Hash {
+		return getBlockFull(b1), nil
+	}
+	b2 := GetTestBitcoinTypeBlock2(c.Parser)
+	if hash == b2.BlockHeader.Hash {
+		return getBlockFull(b2), nil
+	}
+	return nil, bchain.ErrBlockNotFound
+}
+
 func (c *fakeBlockChain) GetBlockInfo(hash string) (v *bchain.BlockInfo, err error) {
 	b1 := GetTestBitcoinTypeBlock1(c.Parser)
 	if hash == b1.BlockHeader.Hash {

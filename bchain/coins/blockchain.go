@@ -111,7 +111,7 @@ func init() {
 	BlockChainFactories["VIPSTARCOIN"] = vipstarcoin.NewVIPSTARCOINRPC
 	BlockChainFactories["ZelCash"] = zec.NewZCashRPC
 	BlockChainFactories["Ravencoin"] = ravencoin.NewRavencoinRPC
-    BlockChainFactories["Ravencoin Testnet"] = ravencoin.NewRavencoinRPC
+	BlockChainFactories["Ravencoin Testnet"] = ravencoin.NewRavencoinRPC
 	BlockChainFactories["Ritocoin"] = ritocoin.NewRitocoinRPC
 	BlockChainFactories["Divi"] = divi.NewDiviRPC
 	BlockChainFactories["CPUchain"] = cpuchain.NewCPUchainRPC
@@ -251,6 +251,11 @@ func (c *blockChainWithMetrics) GetBlock(hash string, height uint32) (v *bchain.
 func (c *blockChainWithMetrics) GetBlockInfo(hash string) (v *bchain.BlockInfo, err error) {
 	defer func(s time.Time) { c.observeRPCLatency("GetBlockInfo", s, err) }(time.Now())
 	return c.b.GetBlockInfo(hash)
+}
+
+func (c *blockChainWithMetrics) GetBlockFull(hash string) (v *bchain.Block, err error) {
+	defer func(s time.Time) { c.observeRPCLatency("GetBlockFull", s, err) }(time.Now())
+	return c.b.GetBlockFull(hash)
 }
 
 func (c *blockChainWithMetrics) GetMempoolTransactions() (v []string, err error) {

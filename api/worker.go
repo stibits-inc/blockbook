@@ -1379,30 +1379,30 @@ func (w *Worker) GetBlocksDetails(page int, blocksOnPage int) (*BlocksDetails, e
 	if page < 0 {
 		page = 0
 	}
-	b, _, err := w.db.GetBestBlock()
+	b, err := w.chain.GetBestBlockHeight()
 	bestheight := int(b)
 	if err != nil {
 		return nil, errors.Annotatef(err, "GetBestBlock")
 	}
 	pg, from, to, page := computePaging(bestheight+1, page, blocksOnPage)
 	r := &BlocksDetails{Paging: pg}
-	r.Blocks = make([]db.BlockInfoDetails, to-from)
+	r.Blocks = make([]bchain.Block, to-from)
 	for i := from; i < to; i++ {
-		bi, err := w.db.GetBlockInfoDetails(uint32(bestheight - i))
+		bhash, err := w.chain.GetBlockHash(uint32(bestheight - i))
 		if err != nil {
 			return nil, err
 		}
-		if bi == nil {
+		bfi, err1 := w.chain.GetBlockFull(bhash)
+
+		if bfi == nil {
 			r.Blocks = r.Blocks[:i]
 			break
 		}
 
-		blockinfo, err1 := w.chain.GetBlockInfo(bi.Hash)
 		if err1 != nil {
 			return nil, err1
 		}
-		bi.Confirmations = blockinfo.Confirmations
-		r.Blocks[i-from] = *bi
+		r.Blocks[i-from] = *bfi
 	}
 	glog.Info("GetBlocks page ", page, ", ", time.Since(start))
 	return r, nil
