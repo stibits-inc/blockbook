@@ -1138,7 +1138,6 @@ func (s *PublicServer) apiBalanceHistory(r *http.Request, apiVersion int) (inter
 }
 
 func (s *PublicServer) apiBlocks(r *http.Request, apiVersion int) (interface{}, error) {
-	r.Header.Add("Access-Control-Allow-Origin", "*")
 	var blocks *api.Blocks
 	var err error
 	s.metrics.ExplorerViews.With(common.Labels{"action": "api-blocks"}).Inc()
