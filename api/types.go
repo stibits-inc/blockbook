@@ -376,9 +376,19 @@ type Blocks struct {
 	Blocks []db.BlockInfo `json:"blocks"`
 }
 
+type BlockDetails struct {
+	Height        uint32  `json:"height"`
+	Time          int64   `json:"time"`
+	Hash          string  `json:"hash"`
+	Txs           uint32  `json:"txs"`
+	Confirmations int     `json:"confirmations"`
+	Size          int     `json:"size"`
+	Movement      big.Int `json:"movement"`
+}
+
 type BlocksDetails struct {
 	Paging
-	Blocks []bchain.Block `json:"blocks"`
+	Blocks []BlockDetails `json:"blocks"`
 }
 
 // BlockInfo contains extended block header data and a list of block txids
@@ -404,6 +414,13 @@ type Block struct {
 	BlockInfo
 	TxCount      int   `json:"txCount"`
 	Transactions []*Tx `json:"txs,omitempty"`
+}
+
+type BlockFull struct {
+	Paging
+	BlockInfo
+	TxCount      int         `json:"txCount"`
+	Transactions []bchain.Tx `json:"txs,omitempty"`
 }
 
 // BlockbookInfo contains information about the running blockbook instance

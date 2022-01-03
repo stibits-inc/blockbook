@@ -1160,7 +1160,11 @@ func (s *PublicServer) apiBlocksDetails(r *http.Request, apiVersion int) (interf
 		if ec != nil {
 			page = 0
 		}
-		blocks, err = s.api.GetBlocksDetails(page, blocksInAPI)
+		itemsInAPI, erb := strconv.Atoi(r.URL.Query().Get("itemsInAPI"))
+		if erb != nil {
+			itemsInAPI = 30
+		}
+		blocks, err = s.api.GetBlocksDetails(page, itemsInAPI)
 	}
 	return blocks, err
 }
