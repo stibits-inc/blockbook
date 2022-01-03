@@ -1386,7 +1386,7 @@ func (w *Worker) GetBlocksDetails(page int, blocksOnPage int) (*BlocksDetails, e
 	}
 	pg, from, to, page := computePaging(bestheight+1, page, blocksOnPage)
 	r := &BlocksDetails{Paging: pg}
-	r.Blocks = make([]bchain.Block, to-from)
+	r.Blocks = make([]BlockDetails, to-from)
 	for i := from; i < to; i++ {
 		bhash, err := w.chain.GetBlockHash(uint32(bestheight - i))
 		if err != nil {
@@ -1402,7 +1402,23 @@ func (w *Worker) GetBlocksDetails(page int, blocksOnPage int) (*BlocksDetails, e
 		if err1 != nil {
 			return nil, err1
 		}
-		r.Blocks[i-from] = *bfi
+		movement := big.NewInt(0)
+		for j := 0; j < len(bfi.Txs); j++ {
+			vout := big.NewInt(0)
+			for v := 0; v < len(bfi.Txs[j].Vout); v++ {
+				vout = vout.Add(vout, &bfi.Txs[j].Vout[v].ValueSat)
+			}
+			movement = movement.Add(movement, vout)
+		}
+		r.Blocks[i-from] = BlockDetails{
+			Height:        bfi.Height,
+			Time:          bfi.Time,
+			Hash:          bfi.Hash,
+			Txs:           uint32(len(bfi.Txs)),
+			Confirmations: bfi.Confirmations,
+			Size:          bfi.Size,
+			Movement:      *movement,
+		}
 	}
 	glog.Info("GetBlocks page ", page, ", ", time.Since(start))
 	return r, nil
