@@ -1757,6 +1757,20 @@ func (w *Worker) GetBlock(bid string, page int, txsOnPage int) (*Block, error) {
 	}, nil
 }
 
+func (w *Worker) GetBlockFull(bid string) (*bchain.Block, error) {
+	start := time.Now()
+
+	bi, err := w.chain.GetBlockFull(bid)
+	if err != nil {
+		if err == bchain.ErrBlockNotFound {
+			return nil, NewAPIError("Block not found", true)
+		}
+		return nil, NewAPIError(fmt.Sprintf("Block not found, %v", err), true)
+	}
+	glog.Info("GetBlock ", bid, ", ", time.Since(start))
+	return bi, nil
+}
+
 // ComputeFeeStats computes fee distribution in defined blocks and logs them to log
 func (w *Worker) ComputeFeeStats(blockFrom, blockTo int, stopCompute chan os.Signal) error {
 	bestheight, _, err := w.db.GetBestBlock()
