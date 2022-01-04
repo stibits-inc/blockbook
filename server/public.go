@@ -197,6 +197,9 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 	serveMux.HandleFunc(path+"api/v2/tickers-list/", s.jsonHandler(s.apiTickersList, apiV2))
 	serveMux.HandleFunc(path+"api/v2/gasprice/", s.jsonHandler(s.apiGasPrice, apiV2))
 	serveMux.HandleFunc(path+"api/v2/estimategas", s.jsonHandler(s.apiEstimateGas, apiV2))
+
+	serveMux.HandleFunc(path+"api/v3/block/", s.jsonHandler(s.apiBlockFull, apiV2))
+
 	// socket.io interface
 	serveMux.Handle(path+"socket.io/", s.socketio.GetHandler())
 	// websocket interface
@@ -1182,6 +1185,20 @@ func (s *PublicServer) apiBlock(r *http.Request, apiVersion int) (interface{}, e
 		if err == nil && apiVersion == apiV1 {
 			return s.api.BlockToV1(block), nil
 		}
+	}
+	return block, err
+}
+
+func (s *PublicServer) apiBlockFull(r *http.Request, apiVersion int) (interface{}, error) {
+	var block *bchain.Block
+	var err error
+	s.metrics.ExplorerViews.With(common.Labels{"action": "api-block"}).Inc()
+	if i := strings.LastIndexByte(r.URL.Path, '/'); i > 0 {
+
+		block, err = s.api.GetBlockFull(r.URL.Path[i+1:])
+		// if err == nil && apiVersion == apiV1 {
+		// 	return s.api.BlockToV1(block), nil
+		// }
 	}
 	return block, err
 }
