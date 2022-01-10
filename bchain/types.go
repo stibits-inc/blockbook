@@ -119,6 +119,27 @@ type Block struct {
 	Txs []Tx `json:"tx"`
 }
 
+type BlockFullDetails struct {
+	BlockHeader
+	Txs []TxFull `json:"tx"`
+}
+
+type TxFull struct {
+	Hex         string `json:"hex"`
+	Txid        string `json:"txid"`
+	Version     int32  `json:"version"`
+	LockTime    uint32 `json:"locktime"`
+	Size        int    `json:"size"`
+	Vin         []Vin  `json:"vin"`
+	Vout        []Vout `json:"vout"`
+	BlockHeight uint32 `json:"blockHeight,omitempty"`
+	// BlockHash     string `json:"blockhash,omitempty"`
+	Confirmations    uint32      `json:"confirmations,omitempty"`
+	Time             int64       `json:"time,omitempty"`
+	Blocktime        int64       `json:"blocktime,omitempty"`
+	CoinSpecificData interface{} `json:"-"`
+}
+
 // BlockHeader contains limited data (as needed for indexing) from backend block header
 type BlockHeader struct {
 	Hash          string `json:"hash"`
@@ -286,6 +307,7 @@ type BlockChain interface {
 	GetBlock(hash string, height uint32) (*Block, error)
 	GetBlockInfo(hash string) (*BlockInfo, error)
 	GetBlockFull(hash string) (*Block, error)
+	GetBlockFullDetails(hash string) (*BlockFullDetails, error)
 	GetMempoolTransactions() ([]string, error)
 	GetTransaction(txid string) (*Tx, error)
 	GetTransactionForMempool(txid string) (*Tx, error)

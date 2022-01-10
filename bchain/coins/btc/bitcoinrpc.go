@@ -322,6 +322,11 @@ type ResGetBlockFull struct {
 	Result bchain.Block     `json:"result"`
 }
 
+type ResGetBlockFullDetails struct {
+	Error  *bchain.RPCError        `json:"error"`
+	Result bchain.BlockFullDetails `json:"result"`
+}
+
 type ResGetBlockInfo struct {
 	Error  *bchain.RPCError `json:"error"`
 	Result bchain.BlockInfo `json:"result"`
@@ -628,6 +633,42 @@ func (b *BitcoinRPC) GetBlockFull(hash string) (*bchain.Block, error) {
 	glog.V(1).Info("rpc: getblock (verbosity=2) ", hash)
 
 	res := ResGetBlockFull{}
+	req := CmdGetBlock{Method: "getblock"}
+	req.Params.BlockHash = hash
+	req.Params.Verbosity = 2
+	err := b.Call(&req, &res)
+
+	if err != nil {
+		return nil, errors.Annotatef(err, "hash %v", hash)
+	}
+	if res.Error != nil {
+		if IsErrBlockNotFound(res.Error) {
+			return nil, bchain.ErrBlockNotFound
+		}
+		return nil, errors.Annotatef(res.Error, "hash %v", hash)
+	}
+
+	for i := range res.Result.Txs {
+		tx := &res.Result.Txs[i]
+		for j := range tx.Vout {
+			vout := &tx.Vout[j]
+			// convert vout.JsonValue to big.Int and clear it, it is only temporary value used for unmarshal
+			vout.ValueSat, err = b.Parser.AmountToBigInt(vout.JsonValue)
+			if err != nil {
+				return nil, err
+			}
+			vout.JsonValue = ""
+		}
+	}
+
+	return &res.Result, nil
+}
+
+// GetBlockFull returns block with given hash
+func (b *BitcoinRPC) GetBlockFullDetails(hash string) (*bchain.BlockFullDetails, error) {
+	glog.V(1).Info("rpc: getblock (verbosity=2) ", hash)
+
+	res := ResGetBlockFullDetails{}
 	req := CmdGetBlock{Method: "getblock"}
 	req.Params.BlockHash = hash
 	req.Params.Verbosity = 2

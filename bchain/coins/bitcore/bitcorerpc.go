@@ -126,6 +126,29 @@ func (f *BitcoreRPC) GetBlockFull(hash string) (*bchain.Block, error) {
 	return &res.Result, nil
 }
 
+// GetBlockFull returns block with given hash
+func (f *BitcoreRPC) GetBlockFullDetails(hash string) (*bchain.BlockFullDetails, error) {
+	glog.V(1).Info("rpc: getblock (verbosity=2) ", hash)
+
+	res := btc.ResGetBlockFullDetails{}
+	req := btc.CmdGetBlock{Method: "getblock"}
+	req.Params.BlockHash = hash
+	req.Params.Verbosity = 2
+	err := f.Call(&req, &res)
+
+	if err != nil {
+		return nil, errors.Annotatef(err, "hash %v", hash)
+	}
+	if res.Error != nil {
+		if btc.IsErrBlockNotFound(res.Error) {
+			return nil, bchain.ErrBlockNotFound
+		}
+		return nil, errors.Annotatef(res.Error, "hash %v", hash)
+	}
+
+	return &res.Result, nil
+}
+
 // GetTransactionForMempool returns a transaction by the transaction ID.
 // It could be optimized for mempool, i.e. without block time and confirmations
 func (f *BitcoreRPC) GetTransactionForMempool(txid string) (*bchain.Tx, error) {

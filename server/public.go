@@ -1190,12 +1190,12 @@ func (s *PublicServer) apiBlock(r *http.Request, apiVersion int) (interface{}, e
 }
 
 func (s *PublicServer) apiBlockFull(r *http.Request, apiVersion int) (interface{}, error) {
-	var block *bchain.Block
+	var block *bchain.BlockFullDetails
 	var err error
 	s.metrics.ExplorerViews.With(common.Labels{"action": "api-block"}).Inc()
 	if i := strings.LastIndexByte(r.URL.Path, '/'); i > 0 {
 
-		block, err = s.api.GetBlockFull(r.URL.Path[i+1:])
+		block, err = s.api.GetBlockFullDetails(r.URL.Path[i+1:])
 		// if err == nil && apiVersion == apiV1 {
 		// 	return s.api.BlockToV1(block), nil
 		// }
