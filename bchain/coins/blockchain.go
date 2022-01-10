@@ -258,6 +258,11 @@ func (c *blockChainWithMetrics) GetBlockFull(hash string) (v *bchain.Block, err 
 	return c.b.GetBlockFull(hash)
 }
 
+func (c *blockChainWithMetrics) GetBlockFullDetails(hash string) (v *bchain.BlockFullDetails, err error) {
+	defer func(s time.Time) { c.observeRPCLatency("GetBlockFullDetails", s, err) }(time.Now())
+	return c.b.GetBlockFullDetails(hash)
+}
+
 func (c *blockChainWithMetrics) GetMempoolTransactions() (v []string, err error) {
 	defer func(s time.Time) { c.observeRPCLatency("GetMempoolTransactions", s, err) }(time.Now())
 	return c.b.GetMempoolTransactions()

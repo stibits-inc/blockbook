@@ -120,6 +120,11 @@ func getBlockFull(b *bchain.Block) *bchain.Block {
 	return nil
 }
 
+func GetBlockFullDetails(b *bchain.BlockFullDetails) *bchain.BlockFullDetails {
+
+	return nil
+}
+
 func (c *fakeBlockChain) GetBlockFull(hash string) (v *bchain.Block, err error) {
 	b1 := GetTestBitcoinTypeBlock1(c.Parser)
 	if hash == b1.BlockHeader.Hash {
@@ -128,6 +133,18 @@ func (c *fakeBlockChain) GetBlockFull(hash string) (v *bchain.Block, err error) 
 	b2 := GetTestBitcoinTypeBlock2(c.Parser)
 	if hash == b2.BlockHeader.Hash {
 		return getBlockFull(b2), nil
+	}
+	return nil, bchain.ErrBlockNotFound
+}
+
+func (c *fakeBlockChain) GetBlockFullDetails(hash string) (v *bchain.BlockFullDetails, err error) {
+	b1 := GetTestBitcoinTypeBlock1(c.Parser)
+	if hash == b1.BlockHeader.Hash {
+		return nil, nil
+	}
+	b2 := GetTestBitcoinTypeBlock2(c.Parser)
+	if hash == b2.BlockHeader.Hash {
+		return nil, nil
 	}
 	return nil, bchain.ErrBlockNotFound
 }

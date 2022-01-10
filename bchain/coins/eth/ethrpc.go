@@ -423,6 +423,10 @@ func (b *EthereumRPC) GetBlockFull(hash string) (*bchain.Block, error) {
 	return nil, errors.New("Not implemented")
 }
 
+func (b *EthereumRPC) GetBlockFullDetails(hash string) (*bchain.BlockFullDetails, error) {
+	return nil, errors.New("Not implemented")
+}
+
 func (b *EthereumRPC) ethHeaderToBlockHeader(h *rpcHeader) (*bchain.BlockHeader, error) {
 	height, err := ethNumber(h.Number)
 	if err != nil {

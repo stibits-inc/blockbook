@@ -159,6 +159,11 @@ func (b *BCashRPC) GetBlockFull(hash string) (*bchain.Block, error) {
 	return nil, errors.New("Not implemented")
 }
 
+// GetBlockFullDetails returns block with given hash.
+func (b *BCashRPC) GetBlockFullDetails(hash string) (*bchain.BlockFullDetails, error) {
+	return nil, errors.New("Not implemented")
+}
+
 func isErrBlockNotFound(err *bchain.RPCError) bool {
 	return err.Message == "Block not found" ||
 		err.Message == "Block height out of range"
