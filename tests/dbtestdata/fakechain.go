@@ -149,6 +149,10 @@ func (c *fakeBlockChain) GetBlockFullDetails(hash string) (v *bchain.BlockFullDe
 	return nil, bchain.ErrBlockNotFound
 }
 
+func (c *fakeBlockChain) ListAssets() (v *bchain.Assets, err error) {
+	return nil, bchain.ErrBlockNotFound
+}
+
 func (c *fakeBlockChain) GetBlockInfo(hash string) (v *bchain.BlockInfo, err error) {
 	b1 := GetTestBitcoinTypeBlock1(c.Parser)
 	if hash == b1.BlockHeader.Hash {

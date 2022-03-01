@@ -203,6 +203,21 @@ type CmdGetBlockHash struct {
 	} `json:"params"`
 }
 
+type CmdListAssets struct {
+	Method string `json:"method"`
+	Params struct {
+		Assets  string `json:"asset"`
+		Verbose bool   `json:"verbose"`
+	} `json:"params"`
+}
+
+type Asset map[string]bchain.Asset
+
+type ResListAssets struct {
+	Error  *bchain.RPCError `json:"error"`
+	Result Asset            `json:"result"`
+}
+
 type ResGetBlockHash struct {
 	Error  *bchain.RPCError `json:"error"`
 	Result string           `json:"result"`
@@ -441,6 +456,29 @@ func (b *BitcoinRPC) GetBestBlockHeight() (uint32, error) {
 		return 0, res.Error
 	}
 	return res.Result, nil
+}
+
+// GetBestBlockHeight returns height of the tip of the best-block-chain.
+func (b *BitcoinRPC) ListAssets() (*bchain.Assets, error) {
+	glog.V(1).Info("rpc: listassets")
+
+	res := ResListAssets{}
+	req := CmdListAssets{Method: "listassets"}
+	req.Params.Assets = "*"
+	req.Params.Verbose = true
+	err := b.Call(&req, &res)
+	if err != nil {
+		return nil, err
+	}
+	i := 0
+	assets := make([]bchain.Asset, len(res.Result))
+	for k := range res.Result {
+		assets[i] = res.Result[k]
+		i++
+	}
+	return &bchain.Assets{
+		Assets: assets,
+	}, nil
 }
 
 // GetChainInfo returns information about the connected backend
