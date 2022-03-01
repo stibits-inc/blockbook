@@ -267,6 +267,22 @@ type XpubDescriptor struct {
 	ExtKey         interface{} // extended key parsed from xpub, usually of type *hdkeychain.ExtendedKey
 }
 
+type Asset struct {
+	Name        string  `json:"name"`
+	Amount      float32 `json:"amount"`
+	Units       int     `json:"units"`
+	Reissuable  int     `json:"reissuable"`
+	HasIPFS     int     `json:"has_ipfs"`
+	BlockHeight int     `json:"block_height"`
+	BlockHash   string  `json:"blockhash"`
+	IpfsHash    string  `json:"ipfs_hash"`
+	TxidHash    string  `json:"txid_hash"`
+}
+
+type Assets struct {
+	Assets []Asset `json:"assets"`
+}
+
 // MempoolTxidEntries is array of MempoolTxidEntry
 type MempoolTxidEntries []MempoolTxidEntry
 
@@ -302,6 +318,7 @@ type BlockChain interface {
 	// requests
 	GetBestBlockHash() (string, error)
 	GetBestBlockHeight() (uint32, error)
+	ListAssets() (*Assets, error)
 	GetBlockHash(height uint32) (string, error)
 	GetBlockHeader(hash string) (*BlockHeader, error)
 	GetBlock(hash string, height uint32) (*Block, error)

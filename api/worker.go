@@ -1373,6 +1373,19 @@ func (w *Worker) GetBlocks(page int, blocksOnPage int) (*Blocks, error) {
 	return r, nil
 }
 
+func (w *Worker) ListAssets() (*bchain.Assets, error) {
+	start := time.Now()
+
+	assets, err := w.chain.ListAssets()
+
+	if err != nil {
+		return nil, errors.Annotatef(err, "ListAssets")
+	}
+
+	glog.Info("GetBlocks page ", ", ", time.Since(start))
+	return assets, nil
+}
+
 func (w *Worker) GetBlocksDetails(page int, blocksOnPage int) (*BlocksDetails, error) {
 	start := time.Now()
 	page--

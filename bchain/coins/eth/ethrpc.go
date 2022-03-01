@@ -423,6 +423,10 @@ func (b *EthereumRPC) GetBlockFull(hash string) (*bchain.Block, error) {
 	return nil, errors.New("Not implemented")
 }
 
+func (b *EthereumRPC) ListAssets() (*bchain.Assets, error) {
+	return nil, errors.New("Not implemented")
+}
+
 func (b *EthereumRPC) GetBlockFullDetails(hash string) (*bchain.BlockFullDetails, error) {
 	return nil, errors.New("Not implemented")
 }

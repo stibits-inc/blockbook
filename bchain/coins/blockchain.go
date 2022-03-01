@@ -233,6 +233,11 @@ func (c *blockChainWithMetrics) GetBestBlockHeight() (v uint32, err error) {
 	return c.b.GetBestBlockHeight()
 }
 
+func (c *blockChainWithMetrics) ListAssets() (assets *bchain.Assets, err error) {
+	defer func(s time.Time) { c.observeRPCLatency("ListAssets", s, err) }(time.Now())
+	return c.b.ListAssets()
+}
+
 func (c *blockChainWithMetrics) GetBlockHash(height uint32) (v string, err error) {
 	defer func(s time.Time) { c.observeRPCLatency("GetBlockHash", s, err) }(time.Now())
 	return c.b.GetBlockHash(height)

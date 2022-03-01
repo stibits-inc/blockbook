@@ -197,6 +197,7 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 	serveMux.HandleFunc(path+"api/v2/tickers-list/", s.jsonHandler(s.apiTickersList, apiV2))
 	serveMux.HandleFunc(path+"api/v2/gasprice/", s.jsonHandler(s.apiGasPrice, apiV2))
 	serveMux.HandleFunc(path+"api/v2/estimategas", s.jsonHandler(s.apiEstimateGas, apiV2))
+	serveMux.HandleFunc(path+"api/v2/assets/", s.jsonHandler(s.apiAssets, apiV2))
 
 	serveMux.HandleFunc(path+"api/v3/block/", s.jsonHandler(s.apiBlockFull, apiV2))
 
@@ -1152,6 +1153,15 @@ func (s *PublicServer) apiBlocks(r *http.Request, apiVersion int) (interface{}, 
 		blocks, err = s.api.GetBlocks(page, blocksInAPI)
 	}
 	return blocks, err
+}
+
+func (s *PublicServer) apiAssets(r *http.Request, apiVersion int) (interface{}, error) {
+	var assets *bchain.Assets
+	var err error
+	s.metrics.ExplorerViews.With(common.Labels{"action": "api-assets"}).Inc()
+
+	assets, err = s.api.ListAssets()
+	return assets, err
 }
 
 func (s *PublicServer) apiBlocksDetails(r *http.Request, apiVersion int) (interface{}, error) {
