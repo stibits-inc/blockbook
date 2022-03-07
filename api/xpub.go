@@ -441,7 +441,7 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 						uBalSat.Add(&uBalSat, tx.getAddrVoutValue(ad.addrDesc))
 						uBalSat.Sub(&uBalSat, tx.getAddrVinValue(ad.addrDesc))
 						// mempool txs are returned only on the first page, uniquely and filtered
-						if page == 0 && !foundTx/* && (txidFilter == nil || txidFilter(&txid, ad))*/ {
+						if page == 0 && !foundTx /* && (txidFilter == nil || txidFilter(&txid, ad))*/ {
 							mempoolEntries = append(mempoolEntries, bchain.MempoolTxidEntry{Txid: txid.txid, Time: uint32(tx.Blocktime)})
 						}
 					}
@@ -564,6 +564,7 @@ func (w *Worker) GetXpubUtxo(xpub string, onlyConfirmed bool, gap int) (Utxos, e
 	if err != nil {
 		return nil, err
 	}
+
 	data, _, inCache, err := w.getXpubData(xd, 0, 1, AccountDetailsBasic, &AddressFilter{
 		Vout:          AddressFilterVoutOff,
 		OnlyConfirmed: onlyConfirmed,
@@ -592,6 +593,19 @@ func (w *Worker) GetXpubUtxo(xpub string, onlyConfirmed bool, gap int) (Utxos, e
 					a := &utxos[j]
 					a.Address = t.Name
 					a.Path = t.Path
+
+					if a.AmountSat.AsInt64() == int64(0) {
+						transaction, err := w.chain.GetTransaction(a.Txid)
+						if err == nil {
+							for v := len(transaction.Vout) - 1; v >= 0; v-- {
+								if int32(transaction.Vout[v].N) == a.Vout && transaction.Vout[v].ScriptPubKey.Asset != nil {
+									a.Asset = transaction.Vout[v].ScriptPubKey.Asset
+									break
+								}
+							}
+						}
+					}
+
 				}
 				r = append(r, utxos...)
 			}

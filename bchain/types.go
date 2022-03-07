@@ -65,6 +65,7 @@ type ScriptPubKey struct {
 	Hex string `json:"hex,omitempty"`
 	// Type      string   `json:"type"`
 	Addresses []string `json:"addresses"`
+	Asset     *Asset   `json:"asset"`
 }
 
 // Vout contains data about tx output
@@ -268,15 +269,8 @@ type XpubDescriptor struct {
 }
 
 type Asset struct {
-	Name        string  `json:"name"`
-	Amount      float32 `json:"amount"`
-	Units       int     `json:"units"`
-	Reissuable  int     `json:"reissuable"`
-	HasIPFS     int     `json:"has_ipfs"`
-	BlockHeight int     `json:"block_height"`
-	BlockHash   string  `json:"blockhash"`
-	IpfsHash    string  `json:"ipfs_hash"`
-	TxidHash    string  `json:"txid_hash"`
+	Name   string  `json:"name"`
+	Amount float32 `json:"amount"`
 }
 
 type Assets struct {
