@@ -274,15 +274,16 @@ type Address struct {
 
 // Utxo is one unspent transaction output
 type Utxo struct {
-	Txid          string  `json:"txid"`
-	Vout          int32   `json:"vout"`
-	AmountSat     *Amount `json:"value"`
-	Height        int     `json:"height,omitempty"`
-	Confirmations int     `json:"confirmations"`
-	Address       string  `json:"address,omitempty"`
-	Path          string  `json:"path,omitempty"`
-	Locktime      uint32  `json:"lockTime,omitempty"`
-	Coinbase      bool    `json:"coinbase,omitempty"`
+	Txid          string        `json:"txid"`
+	Vout          int32         `json:"vout"`
+	AmountSat     *Amount       `json:"value"`
+	Height        int           `json:"height,omitempty"`
+	Confirmations int           `json:"confirmations"`
+	Address       string        `json:"address,omitempty"`
+	Path          string        `json:"path,omitempty"`
+	Locktime      uint32        `json:"lockTime,omitempty"`
+	Coinbase      bool          `json:"coinbase,omitempty"`
+	Asset         *bchain.Asset `json:"asset"`
 }
 
 // Utxos is array of Utxo
