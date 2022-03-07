@@ -1073,17 +1073,28 @@ func (s *PublicServer) apiUtxo(r *http.Request, apiVersion int) (interface{}, er
 	if i := strings.LastIndexByte(r.URL.Path, '/'); i > 0 {
 		onlyConfirmed := false
 		c := r.URL.Query().Get("confirmed")
+		a := r.URL.Query().Get("assets")
+
 		if len(c) > 0 {
 			onlyConfirmed, err = strconv.ParseBool(c)
 			if err != nil {
 				return nil, api.NewAPIError("Parameter 'confirmed' cannot be converted to boolean", true)
+			}
+
+		}
+		includeAssets := false
+		if len(a) > 0 {
+			var err error
+			includeAssets, err = strconv.ParseBool(a)
+			if err != nil {
+				return nil, api.NewAPIError("Parameter 'assets' cannot be converted to boolean", true)
 			}
 		}
 		gap, ec := strconv.Atoi(r.URL.Query().Get("gap"))
 		if ec != nil {
 			gap = 0
 		}
-		utxo, err = s.api.GetXpubUtxo(r.URL.Path[i+1:], onlyConfirmed, gap)
+		utxo, err = s.api.GetXpubUtxo(r.URL.Path[i+1:], onlyConfirmed, gap, includeAssets)
 		if err == nil {
 			s.metrics.ExplorerViews.With(common.Labels{"action": "api-xpub-utxo"}).Inc()
 		} else {

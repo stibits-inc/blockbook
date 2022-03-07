@@ -558,7 +558,7 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 }
 
 // GetXpubUtxo returns unspent outputs for given xpub
-func (w *Worker) GetXpubUtxo(xpub string, onlyConfirmed bool, gap int) (Utxos, error) {
+func (w *Worker) GetXpubUtxo(xpub string, onlyConfirmed bool, gap int, assets bool) (Utxos, error) {
 	start := time.Now()
 	xd, err := w.chainParser.ParseXpub(xpub)
 	if err != nil {
@@ -589,24 +589,33 @@ func (w *Worker) GetXpubUtxo(xpub string, onlyConfirmed bool, gap int) (Utxos, e
 			}
 			if len(utxos) > 0 {
 				t := w.tokenFromXpubAddress(data, ad, ci, i, AccountDetailsTokens)
-				for j := range utxos {
-					a := &utxos[j]
-					a.Address = t.Name
-					a.Path = t.Path
+				if assets {
+					for j := range utxos {
+						a := &utxos[j]
+						a.Address = t.Name
+						a.Path = t.Path
 
-					if a.AmountSat.AsInt64() == int64(0) {
-						transaction, err := w.chain.GetTransaction(a.Txid)
-						if err == nil {
-							for v := len(transaction.Vout) - 1; v >= 0; v-- {
-								if int32(transaction.Vout[v].N) == a.Vout && transaction.Vout[v].ScriptPubKey.Asset != nil {
-									a.Asset = transaction.Vout[v].ScriptPubKey.Asset
-									break
+						if a.AmountSat.AsInt64() == int64(0) {
+							transaction, err := w.chain.GetTransaction(a.Txid)
+							if err == nil {
+								for v := len(transaction.Vout) - 1; v >= 0; v-- {
+									if int32(transaction.Vout[v].N) == a.Vout && transaction.Vout[v].ScriptPubKey.Asset != nil {
+										a.Asset = transaction.Vout[v].ScriptPubKey.Asset
+										break
+									}
 								}
 							}
 						}
-					}
 
+					}
+				} else {
+					for j := range utxos {
+						a := &utxos[j]
+						a.Address = t.Name
+						a.Path = t.Path
+					}
 				}
+
 				r = append(r, utxos...)
 			}
 		}
