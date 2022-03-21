@@ -542,7 +542,9 @@ func (s *WebsocketServer) getAccountUtxo(descriptor string) (interface{}, error)
 }
 
 func (s *WebsocketServer) getTransaction(txid string) (interface{}, error) {
-	return s.api.GetTransaction(txid, false, false)
+	//TODO MEHDI
+	var emptyVar map[string]struct{}
+	return s.api.GetTransaction(txid, false, false, emptyVar)
 }
 
 func (s *WebsocketServer) getTransactionSpecific(txid string) (interface{}, error) {

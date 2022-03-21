@@ -421,11 +421,14 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 				if err != nil {
 					return nil, err
 				}
+
+				//TODO MEHDI
+				var emptyVar map[string]struct{}
 				for _, txid := range newTxids {
 					// the same tx can have multiple addresses from the same xpub, get it from backend it only once
 					tx, foundTx := txmMap[txid.txid]
 					if !foundTx {
-						tx, err = w.GetTransaction(txid.txid, false, true)
+						tx, err = w.GetTransaction(txid.txid, false, true, emptyVar)
 						// mempool transaction may fail
 						if err != nil || tx == nil {
 							glog.Warning("GetTransaction in mempool: ", err)
@@ -496,13 +499,21 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 				pg, _, _, _ = computePaging(totalResults, page, txsOnPage)
 			}
 		}
+
+		selfAddrDesc := make(map[string]struct{})
+		for _, da := range data.addresses {
+			for i := range da {
+				selfAddrDesc[string(da[i].addrDesc)] = struct{}{}
+			}
+		}
+
 		// get confirmed transactions
 		for i := from; i < to; i++ {
 			xpubTxid := &txc[i]
 			if option == AccountDetailsTxidHistory {
 				txids = append(txids, xpubTxid.txid)
 			} else {
-				tx, err := w.txFromTxid(xpubTxid.txid, bestheight, option, nil)
+				tx, err := w.txFromTxid(xpubTxid.txid, bestheight, option, nil, selfAddrDesc)
 				if err != nil {
 					return nil, err
 				}

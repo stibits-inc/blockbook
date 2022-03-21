@@ -590,7 +590,9 @@ func (s *PublicServer) explorerTx(w http.ResponseWriter, r *http.Request) (tpl, 
 	s.metrics.ExplorerViews.With(common.Labels{"action": "tx"}).Inc()
 	if i := strings.LastIndexByte(r.URL.Path, '/'); i > 0 {
 		txid := r.URL.Path[i+1:]
-		tx, err = s.api.GetTransaction(txid, false, true)
+		//TODO MEHDI
+		var emptyVar map[string]struct{}
+		tx, err = s.api.GetTransaction(txid, false, true, emptyVar)
 		if err != nil {
 			return errorTpl, nil, err
 		}
@@ -825,7 +827,9 @@ func (s *PublicServer) explorerSearch(w http.ResponseWriter, r *http.Request) (t
 			http.Redirect(w, r, joinURL("/block/", block.Hash), 302)
 			return noTpl, nil, nil
 		}
-		tx, err = s.api.GetTransaction(q, false, false)
+		//TODO MEHDI
+		var emptyVar map[string]struct{}
+		tx, err = s.api.GetTransaction(q, false, false, emptyVar)
 		if err == nil {
 			http.Redirect(w, r, joinURL("/tx/", tx.Txid), 302)
 			return noTpl, nil, nil
@@ -989,7 +993,9 @@ func (s *PublicServer) apiTx(r *http.Request, apiVersion int) (interface{}, erro
 			return nil, api.NewAPIError("Parameter 'spending' cannot be converted to boolean", true)
 		}
 	}
-	tx, err = s.api.GetTransaction(txid, spendingTxs, false)
+	//TODO MEHDI
+	var emptyVar map[string]struct{}
+	tx, err = s.api.GetTransaction(txid, spendingTxs, false, emptyVar)
 	if err == nil && apiVersion == apiV1 {
 		return s.api.TxToV1(tx), nil
 	}

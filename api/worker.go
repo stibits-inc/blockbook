@@ -101,7 +101,9 @@ func (w *Worker) setSpendingTxToVout(vout *Vout, txid string, height uint32) err
 // GetSpendingTxid returns transaction id of transaction that spent given output
 func (w *Worker) GetSpendingTxid(txid string, n int) (string, error) {
 	start := time.Now()
-	tx, err := w.GetTransaction(txid, false, false)
+	//TODO MEHDI
+	var emptyVar map[string]struct{}
+	tx, err := w.GetTransaction(txid, false, false, emptyVar)
 	if err != nil {
 		return "", err
 	}
@@ -117,7 +119,7 @@ func (w *Worker) GetSpendingTxid(txid string, n int) (string, error) {
 }
 
 // GetTransaction reads transaction data from txid
-func (w *Worker) GetTransaction(txid string, spendingTxs bool, specificJSON bool) (*Tx, error) {
+func (w *Worker) GetTransaction(txid string, spendingTxs bool, specificJSON bool, selfAddrDesc map[string]struct{}) (*Tx, error) {
 	bchainTx, height, err := w.txCache.GetTransaction(txid)
 	if err != nil {
 		if err == bchain.ErrTxNotFound {
@@ -125,11 +127,11 @@ func (w *Worker) GetTransaction(txid string, spendingTxs bool, specificJSON bool
 		}
 		return nil, NewAPIError(fmt.Sprintf("Transaction '%v' not found (%v)", txid, err), true)
 	}
-	return w.GetTransactionFromBchainTx(bchainTx, height, spendingTxs, specificJSON)
+	return w.GetTransactionFromBchainTx(bchainTx, height, spendingTxs, specificJSON, selfAddrDesc)
 }
 
 // GetTransactionFromBchainTx reads transaction data from txid
-func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spendingTxs bool, specificJSON bool) (*Tx, error) {
+func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spendingTxs bool, specificJSON bool, selfAddrDesc map[string]struct{}) (*Tx, error) {
 	type txSpecific struct {
 		*bchain.Tx
 		Vsize int `json:"vsize,omitempty"`
@@ -163,6 +165,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 		vin.N = i
 		vin.Vout = bchainVin.Vout
 		vin.Sequence = int64(bchainVin.Sequence)
+
 		// detect explicit Replace-by-Fee transactions as defined by BIP125
 		if bchainTx.Confirmations == 0 && bchainVin.Sequence < 0xffffffff-1 {
 			rbf = true
@@ -230,6 +233,15 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 				vin.IsAddress = true
 			}
 		}
+
+		if selfAddrDesc != nil {
+			if _, found := selfAddrDesc[string(vin.AddrDesc)]; found {
+				vin.IsXpubAddress = true
+			} else {
+				vin.IsXpubAddress = false
+			}
+		}
+
 	}
 	vouts := make([]Vout, len(bchainTx.Vout))
 	for i := range bchainTx.Vout {
@@ -250,6 +262,13 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 				if err != nil {
 					glog.Errorf("setSpendingTxToVout error %v, %v, output %v", err, vout.AddrDesc, vout.N)
 				}
+			}
+		}
+		if selfAddrDesc != nil {
+			if _, found := selfAddrDesc[string(vout.AddrDesc)]; found {
+				vout.IsXpubAddress = true
+			} else {
+				vout.IsXpubAddress = false
 			}
 		}
 	}
@@ -785,7 +804,7 @@ func (w *Worker) getEthereumTypeAddressBalances(addrDesc bchain.AddressDescripto
 	return ba, tokens, ci, n, nonContractTxs, totalResults, nil
 }
 
-func (w *Worker) txFromTxid(txid string, bestheight uint32, option AccountDetails, blockInfo *db.BlockInfo) (*Tx, error) {
+func (w *Worker) txFromTxid(txid string, bestheight uint32, option AccountDetails, blockInfo *db.BlockInfo, selfAddrDesc map[string]struct{}) (*Tx, error) {
 	var tx *Tx
 	var err error
 	// only ChainBitcoinType supports TxHistoryLight
@@ -797,7 +816,7 @@ func (w *Worker) txFromTxid(txid string, bestheight uint32, option AccountDetail
 		if ta == nil {
 			glog.Warning("DB inconsistency:  tx ", txid, ": not found in txAddresses")
 			// as fallback, get tx from backend
-			tx, err = w.GetTransaction(txid, false, false)
+			tx, err = w.GetTransaction(txid, false, false, selfAddrDesc)
 			if err != nil {
 				return nil, errors.Annotatef(err, "GetTransaction %v", txid)
 			}
@@ -816,12 +835,12 @@ func (w *Worker) txFromTxid(txid string, bestheight uint32, option AccountDetail
 			tx = w.txFromTxAddress(txid, ta, blockInfo, bestheight)
 		}
 	} else if option == AccountDetailsTxSpecific && w.chainType == bchain.ChainEthereumType {
-		tx, err = w.GetTransaction(txid, false, true)
+		tx, err = w.GetTransaction(txid, false, true, selfAddrDesc)
 		if err != nil {
 			return nil, errors.Annotatef(err, "GetTransaction Specific %v", txid)
 		}
 	} else {
-		tx, err = w.GetTransaction(txid, false, false)
+		tx, err = w.GetTransaction(txid, false, false, selfAddrDesc)
 		if err != nil {
 			return nil, errors.Annotatef(err, "GetTransaction %v", txid)
 		}
@@ -904,13 +923,17 @@ func (w *Worker) GetAddress(address string, page int, txsOnPage int, option Acco
 		page = 0
 	}
 	// process mempool, only if toHeight is not specified
+
+	//TODO MEHDI
+	var emptyVar map[string]struct{}
+
 	if filter.ToHeight == 0 && !filter.OnlyConfirmed {
 		txm, err = w.getAddressTxids(addrDesc, true, filter, maxInt)
 		if err != nil {
 			return nil, errors.Annotatef(err, "getAddressTxids %v true", addrDesc)
 		}
 		for _, txid := range txm {
-			tx, err := w.GetTransaction(txid, false, true)
+			tx, err := w.GetTransaction(txid, false, true, emptyVar)
 			// mempool transaction may fail
 			if err != nil || tx == nil {
 				glog.Warning("GetTransaction in mempool: ", err)
@@ -960,7 +983,7 @@ func (w *Worker) GetAddress(address string, page int, txsOnPage int, option Acco
 			if option == AccountDetailsTxidHistory {
 				txids = append(txids, txid)
 			} else {
-				tx, err := w.txFromTxid(txid, bestheight, option, nil)
+				tx, err := w.txFromTxid(txid, bestheight, option, nil, emptyVar)
 				if err != nil {
 					return nil, err
 				}
@@ -1732,8 +1755,11 @@ func (w *Worker) GetBlock(bid string, page int, txsOnPage int) (*Block, error) {
 	pg, from, to, page := computePaging(txCount, page, txsOnPage)
 	txs := make([]*Tx, to-from)
 	txi := 0
+
+	//TODO MEHDI
+	var emptyVar map[string]struct{}
 	for i := from; i < to; i++ {
-		txs[txi], err = w.txFromTxid(bi.Txids[i], bestheight, AccountDetailsTxHistoryLight, dbi)
+		txs[txi], err = w.txFromTxid(bi.Txids[i], bestheight, AccountDetailsTxHistoryLight, dbi, emptyVar)
 		if err != nil {
 			return nil, err
 		}
@@ -1827,13 +1853,16 @@ func (w *Worker) ComputeFeeStats(blockFrom, blockTo int, stopCompute chan os.Sig
 			}
 			fees := make([]int64, len(txids))
 			sum := int64(0)
+			//TODO MEHDI
+			var emptyVar map[string]struct{}
 			for i, txid := range txids {
 				select {
 				case <-stopCompute:
 					glog.Info("ComputeFeeStats interrupted at height ", block)
 					return db.ErrOperationInterrupted
 				default:
-					tx, err := w.txFromTxid(txid, bestheight, AccountDetailsTxHistoryLight, dbi)
+
+					tx, err := w.txFromTxid(txid, bestheight, AccountDetailsTxHistoryLight, dbi, emptyVar)
 					if err != nil {
 						return err
 					}
