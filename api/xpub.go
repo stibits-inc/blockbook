@@ -410,6 +410,14 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 		}
 		filtered = true
 	}
+
+	selfAddrDesc := make(map[string]struct{})
+	for _, da := range data.addresses {
+		for i := range da {
+			selfAddrDesc[string(da[i].addrDesc)] = struct{}{}
+		}
+	}
+
 	// process mempool, only if ToHeight is not specified
 	if filter.ToHeight == 0 && !filter.OnlyConfirmed {
 		txmMap = make(map[string]*Tx)
@@ -422,13 +430,11 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 					return nil, err
 				}
 
-				//TODO MEHDI
-				var emptyVar map[string]struct{}
 				for _, txid := range newTxids {
 					// the same tx can have multiple addresses from the same xpub, get it from backend it only once
 					tx, foundTx := txmMap[txid.txid]
 					if !foundTx {
-						tx, err = w.GetTransaction(txid.txid, false, true, emptyVar)
+						tx, err = w.GetTransaction(txid.txid, false, true, selfAddrDesc)
 						// mempool transaction may fail
 						if err != nil || tx == nil {
 							glog.Warning("GetTransaction in mempool: ", err)
@@ -497,13 +503,6 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 				pg.TotalPages = -1
 			} else {
 				pg, _, _, _ = computePaging(totalResults, page, txsOnPage)
-			}
-		}
-
-		selfAddrDesc := make(map[string]struct{})
-		for _, da := range data.addresses {
-			for i := range da {
-				selfAddrDesc[string(da[i].addrDesc)] = struct{}{}
 			}
 		}
 

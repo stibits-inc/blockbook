@@ -591,7 +591,7 @@ func GetUniqueTxids(txids []string) []string {
 	return ut[0:i]
 }
 
-func (w *Worker) txFromTxAddress(txid string, ta *db.TxAddresses, bi *db.BlockInfo, bestheight uint32) *Tx {
+func (w *Worker) txFromTxAddress(txid string, ta *db.TxAddresses, bi *db.BlockInfo, bestheight uint32, selfAddrDesc map[string]struct{}) *Tx {
 	var err error
 	var valInSat, valOutSat, feesSat big.Int
 	vins := make([]Vin, len(ta.Inputs))
@@ -604,6 +604,14 @@ func (w *Worker) txFromTxAddress(txid string, ta *db.TxAddresses, bi *db.BlockIn
 		vin.Addresses, vin.IsAddress, err = tai.Addresses(w.chainParser)
 		if err != nil {
 			glog.Errorf("tai.Addresses error %v, tx %v, input %v, tai %+v", err, txid, i, tai)
+		}
+
+		if selfAddrDesc != nil {
+			if _, found := selfAddrDesc[string(tai.AddrDesc)]; found {
+				vin.IsXpubAddress = true
+			} else {
+				vin.IsXpubAddress = false
+			}
 		}
 	}
 	vouts := make([]Vout, len(ta.Outputs))
@@ -618,6 +626,14 @@ func (w *Worker) txFromTxAddress(txid string, ta *db.TxAddresses, bi *db.BlockIn
 			glog.Errorf("tai.Addresses error %v, tx %v, output %v, tao %+v", err, txid, i, tao)
 		}
 		vout.Spent = tao.Spent
+
+		if selfAddrDesc != nil {
+			if _, found := selfAddrDesc[string(tao.AddrDesc)]; found {
+				vout.IsXpubAddress = true
+			} else {
+				vout.IsXpubAddress = false
+			}
+		}
 	}
 	// for coinbase transactions valIn is 0
 	feesSat.Sub(&valInSat, &valOutSat)
@@ -832,7 +848,7 @@ func (w *Worker) txFromTxid(txid string, bestheight uint32, option AccountDetail
 					blockInfo = &db.BlockInfo{}
 				}
 			}
-			tx = w.txFromTxAddress(txid, ta, blockInfo, bestheight)
+			tx = w.txFromTxAddress(txid, ta, blockInfo, bestheight, selfAddrDesc)
 		}
 	} else if option == AccountDetailsTxSpecific && w.chainType == bchain.ChainEthereumType {
 		tx, err = w.GetTransaction(txid, false, true, selfAddrDesc)
