@@ -135,6 +135,7 @@ type Vout struct {
 	IsAddress     bool                     `json:"isAddress"`
 	Type          string                   `json:"type,omitempty"`
 	IsXpubAddress bool                     `json:"IsXpubaddress"`
+	Asset         *bchain.Asset            `json:"Asset,omitempty"`
 }
 
 // TokenType specifies type of token

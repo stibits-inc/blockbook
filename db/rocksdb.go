@@ -149,7 +149,7 @@ func NewRocksDB(path string, cacheSize, maxOpenFiles int, parser bchain.BlockCha
 
 	cfNames = append([]string{}, cfBaseNames...)
 	chainType := parser.GetChainType()
-	if chainType == bchain.ChainBitcoinType {
+	if chainType == bchain.ChainBitcoinType || chainType == bchain.ChainRavencoinType {
 		cfNames = append(cfNames, cfNamesBitcoinType...)
 	} else if chainType == bchain.ChainEthereumType {
 		cfNames = append(cfNames, cfNamesEthereumType...)
@@ -450,7 +450,7 @@ func (d *RocksDB) ConnectBlock(block *bchain.Block) error {
 		return err
 	}
 	addresses := make(addressesMap)
-	if chainType == bchain.ChainBitcoinType {
+	if chainType == bchain.ChainBitcoinType || chainType == bchain.ChainRavencoinType {
 		txAddressesMap := make(map[string]*TxAddresses)
 		balances := make(map[string]*AddrBalance)
 		if err := d.processAddressesBitcoinType(block, addresses, txAddressesMap, balances); err != nil {
@@ -523,6 +523,7 @@ type TxOutput struct {
 	AddrDesc bchain.AddressDescriptor
 	Spent    bool
 	ValueSat big.Int
+	Asset    *bchain.Asset
 }
 
 // Addresses converts AddressDescriptor of the output to array of strings
@@ -543,6 +544,7 @@ type Utxo struct {
 	Vout     int32
 	Height   uint32
 	ValueSat big.Int
+	Asset    *bchain.Asset
 }
 
 // AddrBalance stores number of transactions and balances of an address
@@ -708,6 +710,13 @@ func (d *RocksDB) processAddressesBitcoinType(block *bchain.Block, addresses add
 				continue
 			}
 			tao.AddrDesc = addrDesc
+			asset, isAsset := d.chainParser.GetAssetFromAddressDesc(&output)
+			if isAsset != false {
+				tao.Asset = &bchain.Asset{
+					Name:   asset.Name,
+					Amount: asset.Amount,
+				}
+			}
 			if d.chainParser.IsAddrDescIndexable(addrDesc) {
 				strAddrDesc := string(addrDesc)
 				balance, e := balances[strAddrDesc]
@@ -730,6 +739,7 @@ func (d *RocksDB) processAddressesBitcoinType(block *bchain.Block, addresses add
 					Vout:     int32(i),
 					Height:   block.Height,
 					ValueSat: output.ValueSat,
+					Asset:    tao.Asset,
 				})
 				counted := addToAddressesMap(addresses, strAddrDesc, btxID, int32(i))
 				if !counted {
@@ -860,7 +870,12 @@ func (d *RocksDB) storeTxAddresses(wb *gorocksdb.WriteBatch, am map[string]*TxAd
 	varBuf := make([]byte, maxPackedBigintBytes)
 	buf := make([]byte, 1024)
 	for txID, ta := range am {
-		buf = packTxAddresses(ta, buf, varBuf)
+		chainType := d.chainParser.GetChainType()
+		if chainType == bchain.ChainBitcoinType {
+			buf = packTxAddresses(ta, buf, varBuf)
+		} else {
+			buf = packTxAddressesRavencoinType(ta, buf, varBuf)
+		}
 		wb.PutCF(d.cfh[cfTxAddresses], []byte(txID), buf)
 	}
 	return nil
@@ -875,7 +890,12 @@ func (d *RocksDB) storeBalances(wb *gorocksdb.WriteBatch, abm map[string]*AddrBa
 		if ab == nil || ab.Txs <= 0 {
 			wb.DeleteCF(d.cfh[cfAddressBalance], bchain.AddressDescriptor(addrDesc))
 		} else {
-			buf = packAddrBalance(ab, buf, varBuf)
+			chainType := d.chainParser.GetChainType()
+			if chainType == bchain.ChainBitcoinType {
+				buf = packAddrBalance(ab, buf, varBuf)
+			} else {
+				buf = packAddrBalanceRavencoinType(ab, buf, varBuf)
+			}
 			wb.PutCF(d.cfh[cfAddressBalance], bchain.AddressDescriptor(addrDesc), buf)
 		}
 	}
@@ -981,7 +1001,14 @@ func (d *RocksDB) GetAddrDescBalance(addrDesc bchain.AddressDescriptor, detail A
 	if len(buf) < 3 {
 		return nil, nil
 	}
-	return unpackAddrBalance(buf, d.chainParser.PackedTxidLen(), detail)
+
+	var ba *AddrBalance
+	if d.chainParser.GetChainType() == bchain.ChainBitcoinType {
+		ba, err = unpackAddrBalance(buf, d.chainParser.PackedTxidLen(), detail)
+	} else {
+		ba, err = unpackAddrBalanceRavencoinType(buf, d.chainParser.PackedTxidLen(), detail)
+	}
+	return ba, err
 }
 
 // GetAddressBalance returns address balance for an address or nil if address not found
@@ -1004,7 +1031,15 @@ func (d *RocksDB) getTxAddresses(btxID []byte) (*TxAddresses, error) {
 	if len(buf) < 3 {
 		return nil, nil
 	}
-	return unpackTxAddresses(buf)
+
+	chainType := d.chainParser.GetChainType()
+	var txAdd *TxAddresses
+	if chainType == bchain.ChainBitcoinType {
+		txAdd, err = unpackTxAddresses(buf)
+	} else {
+		txAdd, err = unpackTxAddressesRavencoinType(buf)
+	}
+	return txAdd, err
 }
 
 // GetTxAddresses returns TxAddresses for given txid or nil if not found
@@ -1052,6 +1087,23 @@ func packTxAddresses(ta *TxAddresses, buf []byte, varBuf []byte) []byte {
 	return buf
 }
 
+func packTxAddressesRavencoinType(ta *TxAddresses, buf []byte, varBuf []byte) []byte {
+	buf = buf[:0]
+	l := packVaruint(uint(ta.Height), varBuf)
+	buf = append(buf, varBuf[:l]...)
+	l = packVaruint(uint(len(ta.Inputs)), varBuf)
+	buf = append(buf, varBuf[:l]...)
+	for i := range ta.Inputs {
+		buf = appendTxInput(&ta.Inputs[i], buf, varBuf)
+	}
+	l = packVaruint(uint(len(ta.Outputs)), varBuf)
+	buf = append(buf, varBuf[:l]...)
+	for i := range ta.Outputs {
+		buf = appendTxOutputRavencoinType(&ta.Outputs[i], buf, varBuf)
+	}
+	return buf
+}
+
 func appendTxInput(txi *TxInput, buf []byte, varBuf []byte) []byte {
 	la := len(txi.AddrDesc)
 	l := packVaruint(uint(la), varBuf)
@@ -1072,6 +1124,37 @@ func appendTxOutput(txo *TxOutput, buf []byte, varBuf []byte) []byte {
 	buf = append(buf, txo.AddrDesc...)
 	l = packBigint(&txo.ValueSat, varBuf)
 	buf = append(buf, varBuf[:l]...)
+	return buf
+}
+
+func appendTxOutputRavencoinType(txo *TxOutput, buf []byte, varBuf []byte) []byte {
+	isAsset := 0
+	if txo.Asset != nil {
+		isAsset = 1
+	}
+
+	l := packVaruint(uint(isAsset), varBuf)
+	buf = append(buf, varBuf[:l]...)
+
+	la := len(txo.AddrDesc)
+	if txo.Spent {
+		la = ^la
+	}
+	l = packVarint(la, varBuf)
+	buf = append(buf, varBuf[:l]...)
+	buf = append(buf, txo.AddrDesc...)
+	l = packBigint(&txo.ValueSat, varBuf)
+	buf = append(buf, varBuf[:l]...)
+
+	if txo.Asset != nil {
+		la = len(txo.Asset.Name)
+		l := packVaruint(uint(la), varBuf)
+		buf = append(buf, varBuf[:l]...)
+		buf = append(buf, txo.Asset.Name...)
+		l = packVaruint64(uint64(txo.Asset.Amount), varBuf)
+		buf = append(buf, varBuf[:l]...)
+	}
+
 	return buf
 }
 
@@ -1137,6 +1220,102 @@ func packAddrBalance(ab *AddrBalance, buf, varBuf []byte) []byte {
 	return buf
 }
 
+func unpackAddrBalanceRavencoinType(buf []byte, txidUnpackedLen int, detail AddressBalanceDetail) (*AddrBalance, error) {
+	txs, l := unpackVaruint(buf)
+	sentSat, sl := unpackBigint(buf[l:])
+	balanceSat, bl := unpackBigint(buf[l+sl:])
+	l = l + sl + bl
+	ab := &AddrBalance{
+		Txs:        uint32(txs),
+		SentSat:    sentSat,
+		BalanceSat: balanceSat,
+	}
+	if detail != AddressBalanceDetailNoUTXO {
+		// estimate the size of utxos to avoid reallocation
+		ab.Utxos = make([]Utxo, 0, len(buf[l:])/txidUnpackedLen+3)
+		// ab.utxosMap = make(map[string]int, cap(ab.Utxos))
+		for len(buf[l:]) >= txidUnpackedLen+3 {
+			isAsset, VaruintLen := unpackVaruint(buf[l:])
+			l += VaruintLen
+			btxID := append([]byte(nil), buf[l:l+txidUnpackedLen]...)
+			l += txidUnpackedLen
+			vout, ll := unpackVaruint(buf[l:])
+			l += ll
+			height, ll := unpackVaruint(buf[l:])
+			l += ll
+			valueSat, ll := unpackBigint(buf[l:])
+			l += ll
+
+			var asset *bchain.Asset
+			asset = nil
+			if isAsset == 1 {
+				assetLen, ll := unpackVaruint(buf[l:])
+				l += ll
+				assetName := string(append([]byte(nil), buf[l:l+int(assetLen)]...))
+				l += int(assetLen)
+				amount, ll := unpackVaruint64(buf[l:])
+				l += ll
+
+				asset = &bchain.Asset{
+					Name:   assetName,
+					Amount: float64(amount),
+				}
+			}
+
+			u := Utxo{
+				BtxID:    btxID,
+				Vout:     int32(vout),
+				Height:   uint32(height),
+				ValueSat: valueSat,
+				Asset:    asset,
+			}
+			if detail == AddressBalanceDetailUTXO {
+				ab.Utxos = append(ab.Utxos, u)
+			} else {
+				ab.addUtxo(&u)
+			}
+		}
+	}
+	return ab, nil
+}
+func packAddrBalanceRavencoinType(ab *AddrBalance, buf, varBuf []byte) []byte {
+	buf = buf[:0]
+	l := packVaruint(uint(ab.Txs), varBuf)
+	buf = append(buf, varBuf[:l]...)
+	l = packBigint(&ab.SentSat, varBuf)
+	buf = append(buf, varBuf[:l]...)
+	l = packBigint(&ab.BalanceSat, varBuf)
+	buf = append(buf, varBuf[:l]...)
+	for _, utxo := range ab.Utxos {
+		// if Vout < 0, utxo is marked as spent
+		if utxo.Vout >= 0 {
+			isAsset := 0
+			if utxo.Asset != nil {
+				isAsset = 1
+			}
+			l := packVaruint(uint(isAsset), varBuf)
+			buf = append(buf, varBuf[:l]...)
+			buf = append(buf, utxo.BtxID...)
+			l = packVaruint(uint(utxo.Vout), varBuf)
+			buf = append(buf, varBuf[:l]...)
+			l = packVaruint(uint(utxo.Height), varBuf)
+			buf = append(buf, varBuf[:l]...)
+			l = packBigint(&utxo.ValueSat, varBuf)
+			buf = append(buf, varBuf[:l]...)
+
+			if utxo.Asset != nil {
+				assetLen := uint(len(utxo.Asset.Name))
+				l := packVaruint(assetLen, varBuf)
+				buf = append(buf, varBuf[:l]...)
+				buf = append(buf, utxo.Asset.Name...)
+				l = packVaruint64(uint64(utxo.Asset.Amount), varBuf)
+				buf = append(buf, varBuf[:l]...)
+			}
+		}
+	}
+	return buf
+}
+
 func unpackTxAddresses(buf []byte) (*TxAddresses, error) {
 	ta := TxAddresses{}
 	height, l := unpackVaruint(buf)
@@ -1156,12 +1335,62 @@ func unpackTxAddresses(buf []byte) (*TxAddresses, error) {
 	return &ta, nil
 }
 
+func unpackTxAddressesRavencoinType(buf []byte) (*TxAddresses, error) {
+	ta := TxAddresses{}
+	height, l := unpackVaruint(buf)
+	ta.Height = uint32(height)
+	inputs, ll := unpackVaruint(buf[l:])
+	l += ll
+	ta.Inputs = make([]TxInput, inputs)
+	for i := uint(0); i < inputs; i++ {
+		l += unpackTxInput(&ta.Inputs[i], buf[l:])
+	}
+	outputs, ll := unpackVaruint(buf[l:])
+	l += ll
+	ta.Outputs = make([]TxOutput, outputs)
+	for i := uint(0); i < outputs; i++ {
+		l += unpackTxOutputRavencoinType(&ta.Outputs[i], buf[l:])
+	}
+	return &ta, nil
+}
+
 func unpackTxInput(ti *TxInput, buf []byte) int {
 	al, l := unpackVaruint(buf)
 	ti.AddrDesc = append([]byte(nil), buf[l:l+int(al)]...)
 	al += uint(l)
 	ti.ValueSat, l = unpackBigint(buf[al:])
 	return l + int(al)
+}
+
+func unpackTxOutputRavencoinType(to *TxOutput, buf []byte) int {
+	isAsset, VaruintLen := unpackVaruint(buf)
+	al, l := unpackVarint(buf[VaruintLen:])
+	if al < 0 {
+		to.Spent = true
+		al = ^al
+	}
+	l += VaruintLen
+	to.AddrDesc = append([]byte(nil), buf[l:l+al]...)
+
+	al += l
+	to.ValueSat, l = unpackBigint(buf[al:])
+	al += l
+
+	if isAsset == 1 {
+		assetLen, l := unpackVaruint(buf[al:])
+		al += l
+		assetName := string(append([]byte(nil), buf[al:al+int(assetLen)]...))
+		al += int(assetLen)
+		amount, l := unpackVaruint64(buf[al:])
+
+		to.Asset = &bchain.Asset{
+			Name:   assetName,
+			Amount: float64(amount),
+		}
+
+		al += l
+	}
+	return al
 }
 
 func unpackTxOutput(to *TxOutput, buf []byte) int {
@@ -2017,7 +2246,7 @@ func (d *RocksDB) fixUtxo(addrDesc bchain.AddressDescriptor, ba *AddrBalance) (b
 
 // FixUtxos checks and fixes possible
 func (d *RocksDB) FixUtxos(stop chan os.Signal) error {
-	if d.chainParser.GetChainType() != bchain.ChainBitcoinType {
+	if d.chainParser.GetChainType() != bchain.ChainBitcoinType && d.chainParser.GetChainType() != bchain.ChainRavencoinType {
 		glog.Info("FixUtxos: applicable only for bitcoin type coins")
 		return nil
 	}
@@ -2052,7 +2281,13 @@ func (d *RocksDB) FixUtxos(stop chan os.Signal) error {
 				errorsCount++
 				continue
 			}
-			ba, err := unpackAddrBalance(buf, d.chainParser.PackedTxidLen(), AddressBalanceDetailUTXO)
+			var ba *AddrBalance
+			var err error
+			if d.chainParser.GetChainType() == bchain.ChainBitcoinType {
+				ba, err = unpackAddrBalance(buf, d.chainParser.PackedTxidLen(), AddressBalanceDetailUTXO)
+			} else {
+				ba, err = unpackAddrBalanceRavencoinType(buf, d.chainParser.PackedTxidLen(), AddressBalanceDetailUTXO)
+			}
 			if err != nil {
 				glog.Error("FixUtxos: row ", row, ", addrDesc ", addrDesc, ", unpackAddrBalance error ", err)
 				errorsCount++
@@ -2118,6 +2353,10 @@ func packVarint(i int, buf []byte) int {
 	return vlq.PutInt(buf, int64(i))
 }
 
+func packVaruint64(i uint64, buf []byte) int {
+	return vlq.PutUint(buf, uint64(i))
+}
+
 func packVaruint(i uint, buf []byte) int {
 	return vlq.PutUint(buf, uint64(i))
 }
@@ -2130,6 +2369,11 @@ func unpackVarint32(buf []byte) (int32, int) {
 func unpackVarint(buf []byte) (int, int) {
 	i, ofs := vlq.Int(buf)
 	return int(i), ofs
+}
+
+func unpackVaruint64(buf []byte) (uint64, int) {
+	i, ofs := vlq.Uint(buf)
+	return uint64(i), ofs
 }
 
 func unpackVaruint(buf []byte) (uint, int) {

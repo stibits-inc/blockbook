@@ -278,7 +278,7 @@ func (w *Worker) tokenFromXpubAddress(data *xpubData, ad *xpubAddress, changeInd
 }
 
 func (w *Worker) getXpubData(xd *bchain.XpubDescriptor, page int, txsOnPage int, option AccountDetails, filter *AddressFilter, gap int) (*xpubData, uint32, bool, error) {
-	if w.chainType != bchain.ChainBitcoinType {
+	if w.chainType != bchain.ChainBitcoinType &&  w.chainType != bchain.ChainRavencoinType {
 		return nil, 0, false, ErrUnsupportedXpub
 	}
 	var (
@@ -410,14 +410,6 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 		}
 		filtered = true
 	}
-
-	selfAddrDesc := make(map[string]struct{})
-	for _, da := range data.addresses {
-		for i := range da {
-			selfAddrDesc[string(da[i].addrDesc)] = struct{}{}
-		}
-	}
-
 	// process mempool, only if ToHeight is not specified
 	if filter.ToHeight == 0 && !filter.OnlyConfirmed {
 		txmMap = make(map[string]*Tx)
@@ -425,16 +417,17 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 		for _, da := range data.addresses {
 			for i := range da {
 				ad := &da[i]
+				//TODO MEHDI
+				var emptyVar map[string]struct{}
 				newTxids, _, err := w.xpubGetAddressTxids(ad.addrDesc, true, 0, 0, maxInt)
 				if err != nil {
 					return nil, err
 				}
-
 				for _, txid := range newTxids {
 					// the same tx can have multiple addresses from the same xpub, get it from backend it only once
 					tx, foundTx := txmMap[txid.txid]
 					if !foundTx {
-						tx, err = w.GetTransaction(txid.txid, false, true, selfAddrDesc)
+						tx, err = w.GetTransaction(txid.txid, false, true, emptyVar)
 						// mempool transaction may fail
 						if err != nil || tx == nil {
 							glog.Warning("GetTransaction in mempool: ", err)
@@ -503,6 +496,13 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 				pg.TotalPages = -1
 			} else {
 				pg, _, _, _ = computePaging(totalResults, page, txsOnPage)
+			}
+		}
+
+		selfAddrDesc := make(map[string]struct{})
+		for _, da := range data.addresses {
+			for i := range da {
+				selfAddrDesc[string(da[i].addrDesc)] = struct{}{}
 			}
 		}
 
@@ -599,33 +599,11 @@ func (w *Worker) GetXpubUtxo(xpub string, onlyConfirmed bool, gap int, assets bo
 			}
 			if len(utxos) > 0 {
 				t := w.tokenFromXpubAddress(data, ad, ci, i, AccountDetailsTokens)
-				if assets {
-					for j := range utxos {
-						a := &utxos[j]
-						a.Address = t.Name
-						a.Path = t.Path
-
-						if a.AmountSat.AsInt64() == int64(0) {
-							transaction, err := w.chain.GetTransaction(a.Txid)
-							if err == nil {
-								for v := len(transaction.Vout) - 1; v >= 0; v-- {
-									if int32(transaction.Vout[v].N) == a.Vout && transaction.Vout[v].ScriptPubKey.Asset != nil {
-										a.Asset = transaction.Vout[v].ScriptPubKey.Asset
-										break
-									}
-								}
-							}
-						}
-
-					}
-				} else {
-					for j := range utxos {
-						a := &utxos[j]
-						a.Address = t.Name
-						a.Path = t.Path
-					}
+				for j := range utxos {
+					a := &utxos[j]
+					a.Address = t.Name
+					a.Path = t.Path
 				}
-
 				r = append(r, utxos...)
 			}
 		}

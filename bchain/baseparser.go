@@ -103,6 +103,16 @@ func (p *BaseParser) AmountDecimals() int {
 	return p.AmountDecimalPoint
 }
 
+// GetAssetFromAddressDesc returns asset for given address descriptor with flag if asset exist
+func (p *BaseParser) GetAssetFromAddressDesc(output *Vout) (Asset, bool) {
+	return Asset{}, false //Not supported
+}
+
+// GetAssetFromScriptPubKey returns asset for given address descriptor with flag if asset exist
+func (p *BaseParser) GetAssetFromScriptPubKey(ad []byte) (Asset, bool) {
+	return Asset{}, false //Not supported
+}
+
 // ParseTxFromJson parses JSON message containing transaction and returns Tx struct
 func (p *BaseParser) ParseTxFromJson(msg json.RawMessage) (*Tx, error) {
 	var tx Tx

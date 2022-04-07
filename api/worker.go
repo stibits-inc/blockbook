@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -12,7 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-
+	
 	"github.com/golang/glog"
 	"github.com/juju/errors"
 	"github.com/trezor/blockbook/bchain"
@@ -46,7 +47,7 @@ func NewWorker(db *db.RocksDB, chain bchain.BlockChain, mempool bchain.Mempool, 
 		is:          is,
 		metrics:     metrics,
 	}
-	if w.chainType == bchain.ChainBitcoinType {
+	if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 		w.initXpubCache()
 	}
 	return w, nil
@@ -143,7 +144,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 	var ethSpecific *EthereumSpecific
 	var blockhash string
 	if bchainTx.Confirmations > 0 {
-		if w.chainType == bchain.ChainBitcoinType {
+		if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 			ta, err = w.db.GetTxAddresses(bchainTx.Txid)
 			if err != nil {
 				return nil, errors.Annotatef(err, "GetTxAddresses %v", bchainTx.Txid)
@@ -165,14 +166,13 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 		vin.N = i
 		vin.Vout = bchainVin.Vout
 		vin.Sequence = int64(bchainVin.Sequence)
-
 		// detect explicit Replace-by-Fee transactions as defined by BIP125
 		if bchainTx.Confirmations == 0 && bchainVin.Sequence < 0xffffffff-1 {
 			rbf = true
 		}
 		vin.Hex = bchainVin.ScriptSig.Hex
 		vin.Coinbase = bchainVin.Coinbase
-		if w.chainType == bchain.ChainBitcoinType {
+		if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 			//  bchainVin.Txid=="" is coinbase transaction
 			if bchainVin.Txid != "" {
 				// load spending addresses from TxAddresses
@@ -252,6 +252,18 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 		valOutSat.Add(&valOutSat, &bchainVout.ValueSat)
 		vout.Hex = bchainVout.ScriptPubKey.Hex
 		vout.AddrDesc, vout.Addresses, vout.IsAddress, err = w.getAddressesFromVout(bchainVout)
+
+		ad, err := hex.DecodeString(bchainVout.ScriptPubKey.Hex)
+		if err == nil {
+			asset, isAsset := w.chainParser.GetAssetFromScriptPubKey(ad)
+			if isAsset != false {
+				vout.Asset = &bchain.Asset{
+					Name:   asset.Name,
+					Amount: asset.Amount,
+				}
+			}
+		}
+
 		if err != nil {
 			glog.V(2).Infof("getAddressesFromVout error %v, %v, output %v", err, bchainTx.Txid, bchainVout.N)
 		}
@@ -272,7 +284,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 			}
 		}
 	}
-	if w.chainType == bchain.ChainBitcoinType {
+	if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 		// for coinbase transactions valIn is 0
 		feesSat.Sub(&valInSat, &valOutSat)
 		if feesSat.Sign() == -1 {
@@ -378,7 +390,7 @@ func (w *Worker) GetTransactionFromMempoolTx(mempoolTx *bchain.MempoolTx) (*Tx, 
 		}
 		vin.Hex = bchainVin.ScriptSig.Hex
 		vin.Coinbase = bchainVin.Coinbase
-		if w.chainType == bchain.ChainBitcoinType {
+		if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 			//  bchainVin.Txid=="" is coinbase transaction
 			if bchainVin.Txid != "" {
 				vin.ValueSat = (*Amount)(&bchainVin.ValueSat)
@@ -408,11 +420,12 @@ func (w *Worker) GetTransactionFromMempoolTx(mempoolTx *bchain.MempoolTx) (*Tx, 
 		valOutSat.Add(&valOutSat, &bchainVout.ValueSat)
 		vout.Hex = bchainVout.ScriptPubKey.Hex
 		vout.AddrDesc, vout.Addresses, vout.IsAddress, err = w.getAddressesFromVout(bchainVout)
+		vout.Asset = bchainVout.ScriptPubKey.Asset
 		if err != nil {
 			glog.V(2).Infof("getAddressesFromVout error %v, %v, output %v", err, mempoolTx.Txid, bchainVout.N)
 		}
 	}
-	if w.chainType == bchain.ChainBitcoinType {
+	if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 		// for coinbase transactions valIn is 0
 		feesSat.Sub(&valInSat, &valOutSat)
 		if feesSat.Sign() == -1 {
@@ -606,13 +619,13 @@ func (w *Worker) txFromTxAddress(txid string, ta *db.TxAddresses, bi *db.BlockIn
 			glog.Errorf("tai.Addresses error %v, tx %v, input %v, tai %+v", err, txid, i, tai)
 		}
 
-		if selfAddrDesc != nil {
-			if _, found := selfAddrDesc[string(tai.AddrDesc)]; found {
-				vin.IsXpubAddress = true
-			} else {
-				vin.IsXpubAddress = false
-			}
-		}
+		//if len(selfAddrDesc) != 0 {
+		/*if _, found := selfAddrDesc[string(tai.AddrDesc)]; found {
+			vin.IsXpubAddress = true
+		} else {
+			vin.IsXpubAddress = false
+		}*/
+		//}
 	}
 	vouts := make([]Vout, len(ta.Outputs))
 	for i := range ta.Outputs {
@@ -627,13 +640,13 @@ func (w *Worker) txFromTxAddress(txid string, ta *db.TxAddresses, bi *db.BlockIn
 		}
 		vout.Spent = tao.Spent
 
-		if selfAddrDesc != nil {
-			if _, found := selfAddrDesc[string(tao.AddrDesc)]; found {
-				vout.IsXpubAddress = true
-			} else {
-				vout.IsXpubAddress = false
-			}
-		}
+		//if len(selfAddrDesc) != 0 {
+		/*if _, found := selfAddrDesc[string(tao.AddrDesc)]; found {
+			vout.IsXpubAddress = true
+		} else {
+			vout.IsXpubAddress = false
+		}*/
+		//}
 	}
 	// for coinbase transactions valIn is 0
 	feesSat.Sub(&valInSat, &valOutSat)
@@ -823,8 +836,8 @@ func (w *Worker) getEthereumTypeAddressBalances(addrDesc bchain.AddressDescripto
 func (w *Worker) txFromTxid(txid string, bestheight uint32, option AccountDetails, blockInfo *db.BlockInfo, selfAddrDesc map[string]struct{}) (*Tx, error) {
 	var tx *Tx
 	var err error
-	// only ChainBitcoinType supports TxHistoryLight
-	if option == AccountDetailsTxHistoryLight && w.chainType == bchain.ChainBitcoinType {
+	// only ChainBitcoinType and ChainRavencoin supports TxHistoryLight
+	if option == AccountDetailsTxHistoryLight && (w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType) {
 		ta, err := w.db.GetTxAddresses(txid)
 		if err != nil {
 			return nil, errors.Annotatef(err, "GetTxAddresses %v", txid)
@@ -942,7 +955,6 @@ func (w *Worker) GetAddress(address string, page int, txsOnPage int, option Acco
 
 	//TODO MEHDI
 	var emptyVar map[string]struct{}
-
 	if filter.ToHeight == 0 && !filter.OnlyConfirmed {
 		txm, err = w.getAddressTxids(addrDesc, true, filter, maxInt)
 		if err != nil {
@@ -1007,7 +1019,7 @@ func (w *Worker) GetAddress(address string, page int, txsOnPage int, option Acco
 			}
 		}
 	}
-	if w.chainType == bchain.ChainBitcoinType {
+	if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 		totalReceived = ba.ReceivedSat()
 		totalSent = &ba.SentSat
 	}
@@ -1053,7 +1065,7 @@ func (w *Worker) balanceHistoryForTxid(addrDesc bchain.AddressDescriptor, txid s
 	var ta *db.TxAddresses
 	var bchainTx *bchain.Tx
 	var height uint32
-	if w.chainType == bchain.ChainBitcoinType {
+	if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 		ta, err = w.db.GetTxAddresses(txid)
 		if err != nil {
 			return nil, err
@@ -1088,7 +1100,7 @@ func (w *Worker) balanceHistoryForTxid(addrDesc bchain.AddressDescriptor, txid s
 		Txid:          txid,
 	}
 	countSentToSelf := false
-	if w.chainType == bchain.ChainBitcoinType {
+	if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 		// detect if this input is the first of selfAddrDesc
 		// to not to count sentToSelf multiple times if counting multiple xpub addresses
 		ownInputIndex := -1
@@ -1295,6 +1307,7 @@ func (w *Worker) getAddrDescUtxo(addrDesc bchain.AddressDescriptor, ba *db.AddrB
 									AmountSat: (*Amount)(&vout.ValueSat),
 									Locktime:  bchainTx.LockTime,
 									Coinbase:  coinbase,
+									Asset:     vout.ScriptPubKey.Asset, //TODO MEHDI : TO CHECK
 								})
 								inMempool[bchainTx.Txid] = struct{}{}
 							}
@@ -1342,6 +1355,7 @@ func (w *Worker) getAddrDescUtxo(addrDesc bchain.AddressDescriptor, ba *db.AddrB
 							coinbase = true
 						}
 					}
+
 					_, e = inMempool[txid]
 					if !e {
 						utxos = append(utxos, Utxo{
@@ -1351,6 +1365,7 @@ func (w *Worker) getAddrDescUtxo(addrDesc bchain.AddressDescriptor, ba *db.AddrB
 							Height:        int(utxo.Height),
 							Confirmations: confirmations,
 							Coinbase:      coinbase,
+							Asset:         utxo.Asset,
 						})
 					}
 				}
@@ -1366,7 +1381,7 @@ func (w *Worker) getAddrDescUtxo(addrDesc bchain.AddressDescriptor, ba *db.AddrB
 
 // GetAddressUtxo returns unspent outputs for given address
 func (w *Worker) GetAddressUtxo(address string, onlyConfirmed bool) (Utxos, error) {
-	if w.chainType != bchain.ChainBitcoinType {
+	if w.chainType != bchain.ChainBitcoinType && w.chainType != bchain.ChainRavencoinType {
 		return nil, NewAPIError("Not supported", true)
 	}
 	start := time.Now()
@@ -1863,7 +1878,7 @@ func (w *Worker) ComputeFeeStats(blockFrom, blockTo int, stopCompute chan os.Sig
 				Time:   bi.Time,
 			}
 			txids := bi.Txids
-			if w.chainType == bchain.ChainBitcoinType {
+			if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 				// skip the coinbase transaction
 				txids = txids[1:]
 			}

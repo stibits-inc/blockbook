@@ -928,6 +928,7 @@ func Test_packTxAddresses_unpackTxAddresses(t *testing.T) {
 						AddrDesc: addressToAddrDesc("tb1qgw4vyzs3dcy75nmezjlpc40yc9a2vq9hghdyt2", parser),
 						ValueSat: *big.NewInt(1),
 						Spent:    true,
+						Asset:    nil,
 					},
 				},
 			},

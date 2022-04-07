@@ -68,39 +68,146 @@ func GetChainParams(chain string) *chaincfg.Params {
 	}
 }
 
+func AssetNameScriptOffset(script []byte) int {
+	nStartingIndex := 0
+	scriptLen := len(script)
+	if scriptLen > 31 {
+		//OP_RVN_ASSET = 0xc0,  RVN_R = 114, RVN_V = 118, RVN_N = 110
+		if script[25] == 0xc0 { // OP_RVN_ASSET is always in the 25 index of the script if it exists
+			idx := -1
+
+			if script[27] == 114 { // Check to see if RVN starts at 27 ( this->size() < 105)
+				if script[28] == 118 {
+					if script[29] == 110 {
+						idx = 30
+					}
+				}
+
+			} else {
+				if script[28] == 114 { // Check to see if RVN starts at 28 ( this->size() >= 105)
+					if script[29] == 118 {
+						if script[30] == 110 {
+							idx = 31
+						}
+					}
+				}
+			}
+
+			if idx > 0 {
+				nStartingIndex = idx + 1
+			}
+		}
+	}
+
+	return nStartingIndex
+}
+
+func NewAssetFromScriptPubKey(script []byte, nStartingIndex int) (string, uint64) {
+	scriptLen := len(script)
+	if script == nil || scriptLen == 0 || scriptLen > 0x100 { //MAX_SCRIPT_LENGTH = 0x100
+		return "", 0
+	}
+	off := 0
+
+	assetScriptLen := scriptLen - nStartingIndex
+	assetScript := script[nStartingIndex : nStartingIndex+assetScriptLen]
+	name_size := int(assetScript[off])
+	off += 1
+	var name string
+	var amount uint64
+
+	if off <= assetScriptLen {
+		name = string(assetScript[off : off+name_size])
+		off += name_size
+	}
+	if (off + binary.Size(amount)) <= assetScriptLen {
+		amount = binary.LittleEndian.Uint64(assetScript[off : off+binary.Size(amount)])
+	} else {
+		amount = 0
+	}
+
+	if assetScript[assetScriptLen-1] != 0x75 { //OP_DROP = 0x75
+		return "", 0
+	}
+	return name, amount
+}
+// GetAssetFromScriptPubKey returns asset for given address descriptor with flag if asset exist
+func (p *RavencoinParser) GetAssetFromScriptPubKey(ad []byte) (bchain.Asset, bool) {
+	var asset bchain.Asset
+	var isAsset bool
+	isAsset = false
+	l := len(ad)
+	if l > 25 {
+		if ad[0] == 0x76 && ad[1] == 0xa9 && ad[2] == 0x14 && ad[l-1] == 0x75 {
+			nStartingIndex := AssetNameScriptOffset(ad)
+			assetName, assetAmount := NewAssetFromScriptPubKey(ad, nStartingIndex)
+			asset = bchain.Asset{
+				Name:   string(assetName),
+				Amount: float64(assetAmount),
+			}
+			isAsset = true
+		}
+	}
+
+	return asset, isAsset
+}
+// GetAssetFromAddressDesc returns asset for given address descriptor with flag if asset exist
+func (p *RavencoinParser) GetAssetFromAddressDesc(output *bchain.Vout) (bchain.Asset, bool) {
+	ad, err := hex.DecodeString(output.ScriptPubKey.Hex)
+	var asset bchain.Asset
+	if err != nil {
+		return asset, false
+	}
+
+	l := len(ad)
+	if l > 25 {
+		if ad[0] == 0x76 && ad[1] == 0xa9 && ad[2] == 0x14 && ad[l-1] == 0x75 {
+			return p.GetAssetFromScriptPubKey(ad)
+		}
+	}
+
+	return asset, false
+}
+
 // GetAddrDescFromVout returns internal address representation (descriptor) of given transaction output
 func (p *RavencoinParser) GetAddrDescFromVout(output *bchain.Vout) (bchain.AddressDescriptor, error) {
-        ad, err := hex.DecodeString(output.ScriptPubKey.Hex)
-        if err != nil {
-                return ad, err
-        }
+	ad, err := hex.DecodeString(output.ScriptPubKey.Hex)
+	if err != nil {
+		return ad, err
+	}
 
-        l := len(ad)
-        if l > 25 {
-                if ad[0] == 0x76 &&  ad[1] == 0xa9 && ad[2] == 0x14 && ad[l-1] == 0x75{
-                        add := ad[0 : 25]
-                        return add, err
-                }
-        }
+	l := len(ad)
+	if l > 25 {
+		if ad[0] == 0x76 && ad[1] == 0xa9 && ad[2] == 0x14 && ad[l-1] == 0x75 {
+			add := ad[0:25]
 
-        // convert possible P2PK script to P2PKH
-        // so that all transactions by given public key are indexed together
-        return txscript.ConvertP2PKtoP2PKH(p.Params.Base58CksumHasher, ad)
+			return add, err
+		}
+	}
+
+	// convert possible P2PK script to P2PKH
+	// so that all transactions by given public key are indexed together
+	return txscript.ConvertP2PKtoP2PKH(p.Params.Base58CksumHasher, ad)
 }
 
 // GetAddressesFromAddrDesc returns addresses for given address descriptor (asset supported)  with flag if the addresses are searchable
 func (p *RavencoinParser) GetAddressesFromAddrDesc(addrDesc bchain.AddressDescriptor) ([]string, bool, error) {
-        var addressDesc bchain.AddressDescriptor
-        addressDesc = addrDesc
-        l := binary.Size(addrDesc)
+	var addressDesc bchain.AddressDescriptor
+	addressDesc = addrDesc
+	l := binary.Size(addrDesc)
 
-        if l > 25 {
-                if addrDesc[0] == 0x76 &&  addrDesc[1] == 0xa9 && addrDesc[2] == 0x14 && addrDesc[l-1] == 0x75 {
-                	addressDesc = addrDesc[0:25]
-                }
-        }
+	if l > 25 {
+		if addrDesc[0] == 0x76 && addrDesc[1] == 0xa9 && addrDesc[2] == 0x14 && addrDesc[l-1] == 0x75 {
+			addressDesc = addrDesc[0:25]
+		}
+	}
 
-        return p.BitcoinLikeParser.GetAddressesFromAddrDesc(addressDesc)
+	return p.BitcoinLikeParser.GetAddressesFromAddrDesc(addressDesc)
+}
+
+// GetChainType is type of the blockchain, default is ChainBitcoinType
+func (p *RavencoinParser) GetChainType() bchain.ChainType {
+	return bchain.ChainRavencoinType
 }
 
 // PackTx packs transaction to byte array using protobuf

@@ -17,6 +17,8 @@ type ChainType int
 const (
 	// ChainBitcoinType is blockchain derived from bitcoin
 	ChainBitcoinType = ChainType(iota)
+	// ChainRavencoinType is Ravencoin blockchain (derived from bitcoin)
+	ChainRavencoinType
 	// ChainEthereumType is blockchain derived from ethereum
 	ChainEthereumType
 )
@@ -270,7 +272,7 @@ type XpubDescriptor struct {
 
 type Asset struct {
 	Name   string  `json:"name"`
-	Amount float32 `json:"amount"`
+	Amount float64 `json:"amount"`
 }
 
 type Assets struct {
@@ -355,6 +357,8 @@ type BlockChainParser interface {
 	// it uses string operations to avoid problems with rounding
 	AmountToBigInt(n common.JSONNumber) (big.Int, error)
 	// address descriptor conversions
+	GetAssetFromAddressDesc(output *Vout) (Asset, bool)
+	GetAssetFromScriptPubKey(ad []byte) (Asset, bool)
 	GetAddrDescFromVout(output *Vout) (AddressDescriptor, error)
 	GetAddrDescFromAddress(address string) (AddressDescriptor, error)
 	GetAddressesFromAddrDesc(addrDesc AddressDescriptor) ([]string, bool, error)
