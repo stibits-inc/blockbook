@@ -390,7 +390,7 @@ func (s *SocketIoServer) getAddressHistory(addr []string, opts *addrOpts) (res r
 	//TODO MEHDI
 	var emptyVar map[string]struct{}
 	for txi := opts.From; txi < to; txi++ {
-		tx, err := s.api.GetTransaction(txids[txi], false, false, emptyVar)
+		tx, err := s.api.GetTransaction(txids[txi], api.AccountDetailsBasic, false, false, emptyVar)
 		if err != nil {
 			return res, err
 		}
@@ -633,7 +633,7 @@ type resultGetDetailedTransaction struct {
 func (s *SocketIoServer) getDetailedTransaction(txid string) (res resultGetDetailedTransaction, err error) {
 	//TODO MEHDI
 	var emptyVar map[string]struct{}
-	tx, err := s.api.GetTransaction(txid, false, false, emptyVar)
+	tx, err := s.api.GetTransaction(txid, api.AccountDetailsBasic, false, false, emptyVar)
 	if err != nil {
 		return res, err
 	}

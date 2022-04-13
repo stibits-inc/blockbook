@@ -592,7 +592,7 @@ func (s *PublicServer) explorerTx(w http.ResponseWriter, r *http.Request) (tpl, 
 		txid := r.URL.Path[i+1:]
 		//TODO MEHDI
 		var emptyVar map[string]struct{}
-		tx, err = s.api.GetTransaction(txid, false, true, emptyVar)
+		tx, err = s.api.GetTransaction(txid, api.AccountDetailsBasic, false, true, emptyVar)
 		if err != nil {
 			return errorTpl, nil, err
 		}
@@ -669,6 +669,8 @@ func (s *PublicServer) getAddressQueryParams(r *http.Request, accountDetails api
 		accountDetails = api.AccountDetailsTxHistory
 	case "txspecific":
 		accountDetails = api.AccountDetailsTxSpecific
+	case "txsraw":
+		accountDetails = api.AccountDetailsTxRaw
 	}
 	tokensToReturn := api.TokensToReturnNonzeroBalance
 	switch r.URL.Query().Get("tokens") {
@@ -829,7 +831,7 @@ func (s *PublicServer) explorerSearch(w http.ResponseWriter, r *http.Request) (t
 		}
 		//TODO MEHDI
 		var emptyVar map[string]struct{}
-		tx, err = s.api.GetTransaction(q, false, false, emptyVar)
+		tx, err = s.api.GetTransaction(q, api.AccountDetailsBasic, false, false, emptyVar)
 		if err == nil {
 			http.Redirect(w, r, joinURL("/tx/", tx.Txid), 302)
 			return noTpl, nil, nil
@@ -995,7 +997,7 @@ func (s *PublicServer) apiTx(r *http.Request, apiVersion int) (interface{}, erro
 	}
 	//TODO MEHDI
 	var emptyVar map[string]struct{}
-	tx, err = s.api.GetTransaction(txid, spendingTxs, false, emptyVar)
+	tx, err = s.api.GetTransaction(txid, api.AccountDetailsBasic, spendingTxs, false, emptyVar)
 	if err == nil && apiVersion == apiV1 {
 		return s.api.TxToV1(tx), nil
 	}

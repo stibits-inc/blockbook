@@ -104,7 +104,7 @@ func (w *Worker) GetSpendingTxid(txid string, n int) (string, error) {
 	start := time.Now()
 	//TODO MEHDI
 	var emptyVar map[string]struct{}
-	tx, err := w.GetTransaction(txid, false, false, emptyVar)
+	tx, err := w.GetTransaction(txid, AccountDetailsBasic, false, false, emptyVar)
 	if err != nil {
 		return "", err
 	}
@@ -120,7 +120,7 @@ func (w *Worker) GetSpendingTxid(txid string, n int) (string, error) {
 }
 
 // GetTransaction reads transaction data from txid
-func (w *Worker) GetTransaction(txid string, spendingTxs bool, specificJSON bool, selfAddrDesc map[string]struct{}) (*Tx, error) {
+func (w *Worker) GetTransaction(txid string, option AccountDetails, spendingTxs bool, specificJSON bool, selfAddrDesc map[string]struct{}) (*Tx, error) {
 	bchainTx, height, err := w.txCache.GetTransaction(txid)
 	if err != nil {
 		if err == bchain.ErrTxNotFound {
@@ -128,11 +128,11 @@ func (w *Worker) GetTransaction(txid string, spendingTxs bool, specificJSON bool
 		}
 		return nil, NewAPIError(fmt.Sprintf("Transaction '%v' not found (%v)", txid, err), true)
 	}
-	return w.GetTransactionFromBchainTx(bchainTx, height, spendingTxs, specificJSON, selfAddrDesc)
+	return w.GetTransactionFromBchainTx(bchainTx, height, option, spendingTxs, specificJSON, selfAddrDesc)
 }
 
 // GetTransactionFromBchainTx reads transaction data from txid
-func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spendingTxs bool, specificJSON bool, selfAddrDesc map[string]struct{}) (*Tx, error) {
+func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, option AccountDetails, spendingTxs bool, specificJSON bool, selfAddrDesc map[string]struct{}) (*Tx, error) {
 	type txSpecific struct {
 		*bchain.Tx
 		Vsize int `json:"vsize,omitempty"`
@@ -143,6 +143,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 	var tokens []TokenTransfer
 	var ethSpecific *EthereumSpecific
 	var blockhash string
+	var addresses []string
 	if bchainTx.Confirmations > 0 {
 		if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 			ta, err = w.db.GetTxAddresses(bchainTx.Txid)
@@ -235,8 +236,11 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 		}
 
 		if selfAddrDesc != nil {
-			if _, found := selfAddrDesc[string(vin.AddrDesc)]; found {
+			if _, found := selfAddrDesc[vin.Addresses[0]]; found {
 				vin.IsXpubAddress = true
+				if option == AccountDetailsTxRaw {
+					addresses = append(addresses, vin.Addresses[0])
+				}
 			} else {
 				vin.IsXpubAddress = false
 			}
@@ -277,8 +281,12 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 			}
 		}
 		if selfAddrDesc != nil {
-			if _, found := selfAddrDesc[string(vout.AddrDesc)]; found {
+			if _, found := selfAddrDesc[string(vout.Addresses[0])]; found {
 				vout.IsXpubAddress = true
+				if option == AccountDetailsTxRaw {
+					addresses = append(addresses, vout.Addresses[0])
+				}
+				
 			} else {
 				vout.IsXpubAddress = false
 			}
@@ -345,6 +353,12 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 	if bchainTx.Confirmations == 0 {
 		bchainTx.Blocktime = int64(w.mempool.GetTransactionTime(bchainTx.Txid))
 	}
+
+	//TODO Case when (option = AccountDetailsTxRaw) should be reworked 
+	if option == AccountDetailsTxRaw {
+		vins = nil
+		vouts = nil
+	}
 	r := &Tx{
 		Blockhash:        blockhash,
 		Blockheight:      height,
@@ -360,6 +374,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 		Rbf:              rbf,
 		Vin:              vins,
 		Vout:             vouts,
+		Addresses:        addresses,
 		CoinSpecificData: sj,
 		TokenTransfers:   tokens,
 		EthereumSpecific: ethSpecific,
@@ -845,7 +860,7 @@ func (w *Worker) txFromTxid(txid string, bestheight uint32, option AccountDetail
 		if ta == nil {
 			glog.Warning("DB inconsistency:  tx ", txid, ": not found in txAddresses")
 			// as fallback, get tx from backend
-			tx, err = w.GetTransaction(txid, false, false, selfAddrDesc)
+			tx, err = w.GetTransaction(txid, option, false, false, selfAddrDesc)
 			if err != nil {
 				return nil, errors.Annotatef(err, "GetTransaction %v", txid)
 			}
@@ -864,12 +879,12 @@ func (w *Worker) txFromTxid(txid string, bestheight uint32, option AccountDetail
 			tx = w.txFromTxAddress(txid, ta, blockInfo, bestheight, selfAddrDesc)
 		}
 	} else if option == AccountDetailsTxSpecific && w.chainType == bchain.ChainEthereumType {
-		tx, err = w.GetTransaction(txid, false, true, selfAddrDesc)
+		tx, err = w.GetTransaction(txid, option, false, true, selfAddrDesc)
 		if err != nil {
 			return nil, errors.Annotatef(err, "GetTransaction Specific %v", txid)
 		}
 	} else {
-		tx, err = w.GetTransaction(txid, false, false, selfAddrDesc)
+		tx, err = w.GetTransaction(txid, option, false, false, selfAddrDesc)
 		if err != nil {
 			return nil, errors.Annotatef(err, "GetTransaction %v", txid)
 		}
@@ -961,7 +976,7 @@ func (w *Worker) GetAddress(address string, page int, txsOnPage int, option Acco
 			return nil, errors.Annotatef(err, "getAddressTxids %v true", addrDesc)
 		}
 		for _, txid := range txm {
-			tx, err := w.GetTransaction(txid, false, true, emptyVar)
+			tx, err := w.GetTransaction(txid, option, false, true, emptyVar)
 			// mempool transaction may fail
 			if err != nil || tx == nil {
 				glog.Warning("GetTransaction in mempool: ", err)

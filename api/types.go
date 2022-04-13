@@ -31,6 +31,8 @@ const (
 	AccountDetailsTxidHistory
 	// AccountDetailsTxHSpecific - basic + tokens + full tx data specific for Ethereum Only, subject to paging
 	AccountDetailsTxSpecific
+	// AccountDetailsTxRaw - basic + tokens + full tx data specific for Ethereum Only, subject to paging
+	AccountDetailsTxRaw
 	// AccountDetailsTxHistoryLight - basic + tokens + easily obtained tx data (not requiring requests to backend), subject to paging
 	AccountDetailsTxHistoryLight
 	// AccountDetailsTxHistory - basic + tokens + full tx data, subject to paging
@@ -189,8 +191,9 @@ type Tx struct {
 	Txid             string            `json:"txid"`
 	Version          int32             `json:"version,omitempty"`
 	Locktime         uint32            `json:"lockTime,omitempty"`
-	Vin              []Vin             `json:"vin"`
-	Vout             []Vout            `json:"vout"`
+	Vin              []Vin             `json:"vin,omitempty"`
+	Vout             []Vout            `json:"vout,omitempty"`
+	Addresses        []string          `json:"addresses,omitempty"`
 	Blockhash        string            `json:"blockHash,omitempty"`
 	Blockheight      int               `json:"blockHeight"`
 	Confirmations    uint32            `json:"confirmations"`
@@ -266,6 +269,7 @@ type Address struct {
 	NonTokenTxs           int                   `json:"nonTokenTxs,omitempty"`
 	Transactions          []*Tx                 `json:"transactions,omitempty"`
 	Txids                 []string              `json:"txids,omitempty"`
+	Addresses             []string              `json:"addresses,omitempty"`
 	Nonce                 string                `json:"nonce,omitempty"`
 	UsedTokens            int                   `json:"usedTokens,omitempty"`
 	Tokens                []Token               `json:"tokens,omitempty"`

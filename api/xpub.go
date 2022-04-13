@@ -6,7 +6,7 @@ import (
 	"sort"
 	"sync"
 	"time"
-
+	
 	"github.com/golang/glog"
 	"github.com/juju/errors"
 	"github.com/trezor/blockbook/bchain"
@@ -376,6 +376,7 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 		txCount        int
 		txs            []*Tx
 		txids          []string
+		addresses      []string   
 		pg             Paging
 		filtered       bool
 		uBalSat        big.Int
@@ -427,7 +428,7 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 					// the same tx can have multiple addresses from the same xpub, get it from backend it only once
 					tx, foundTx := txmMap[txid.txid]
 					if !foundTx {
-						tx, err = w.GetTransaction(txid.txid, false, true, emptyVar)
+						tx, err = w.GetTransaction(txid.txid, option, false, true, emptyVar)
 						// mempool transaction may fail
 						if err != nil || tx == nil {
 							glog.Warning("GetTransaction in mempool: ", err)
@@ -502,7 +503,10 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 		selfAddrDesc := make(map[string]struct{})
 		for _, da := range data.addresses {
 			for i := range da {
-				selfAddrDesc[string(da[i].addrDesc)] = struct{}{}
+				add, _, err := w.chainParser.GetAddressesFromAddrDesc(da[i].addrDesc)
+				if err == nil {
+					selfAddrDesc[string(add[0])] = struct{}{}
+				}
 			}
 		}
 
@@ -519,6 +523,12 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 				txs = append(txs, tx)
 			}
 		}
+		if option == AccountDetailsTxRaw {
+			for a := range selfAddrDesc {
+				addresses = append(addresses, a)
+			}
+		}
+
 	} else {
 		txCount = int(data.txCountEstimate)
 	}
@@ -559,6 +569,7 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 		UnconfirmedTxs:        unconfirmedTxs,
 		Transactions:          txs,
 		Txids:                 txids,
+		Addresses:             addresses,
 		UsedTokens:            usedTokens,
 		Tokens:                tokens,
 		XPubAddresses:         xpubAddresses,
