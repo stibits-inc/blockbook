@@ -234,18 +234,17 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 				vin.IsAddress = true
 			}
 		}
-
+		vin.IsXpubAddress = false
 		if selfAddrDesc != nil {
-			if _, found := selfAddrDesc[vin.Addresses[0]]; found {
-				vin.IsXpubAddress = true
-				if option == AccountDetailsTxRaw {
-					addresses = append(addresses, vin.Addresses[0])
+			if len(vin.Addresses) != 0 {
+				if _, found := selfAddrDesc[vin.Addresses[0]]; found {
+					vin.IsXpubAddress = true
+					if option == AccountDetailsTxRaw {
+						addresses = append(addresses, vin.Addresses[0])
+					}	
 				}
-			} else {
-				vin.IsXpubAddress = false
 			}
 		}
-
 	}
 	vouts := make([]Vout, len(bchainTx.Vout))
 	for i := range bchainTx.Vout {
@@ -256,6 +255,9 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 		valOutSat.Add(&valOutSat, &bchainVout.ValueSat)
 		vout.Hex = bchainVout.ScriptPubKey.Hex
 		vout.AddrDesc, vout.Addresses, vout.IsAddress, err = w.getAddressesFromVout(bchainVout)
+		if err != nil {
+			glog.V(2).Infof("getAddressesFromVout error %v, %v, output %v", err, bchainTx.Txid, bchainVout.N)
+		}
 
 		ad, err := hex.DecodeString(bchainVout.ScriptPubKey.Hex)
 		if err == nil {
@@ -267,10 +269,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 				}
 			}
 		}
-
-		if err != nil {
-			glog.V(2).Infof("getAddressesFromVout error %v, %v, output %v", err, bchainTx.Txid, bchainVout.N)
-		}
+		
 		if ta != nil {
 			vout.Spent = ta.Outputs[i].Spent
 			if spendingTxs && vout.Spent {
@@ -280,15 +279,15 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 				}
 			}
 		}
+		vout.IsXpubAddress = false
 		if selfAddrDesc != nil {
-			if _, found := selfAddrDesc[string(vout.Addresses[0])]; found {
-				vout.IsXpubAddress = true
-				if option == AccountDetailsTxRaw {
-					addresses = append(addresses, vout.Addresses[0])
+			if len(vout.Addresses) != 0 {
+				if _, found := selfAddrDesc[vout.Addresses[0]]; found {
+					vout.IsXpubAddress = true
+					if option == AccountDetailsTxRaw {
+						addresses = append(addresses, vout.Addresses[0])
+					}	
 				}
-				
-			} else {
-				vout.IsXpubAddress = false
 			}
 		}
 	}
