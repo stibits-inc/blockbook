@@ -376,7 +376,6 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 		txCount        int
 		txs            []*Tx
 		txids          []string
-		addresses      []string   
 		pg             Paging
 		filtered       bool
 		uBalSat        big.Int
@@ -523,11 +522,6 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 				txs = append(txs, tx)
 			}
 		}
-		if option == AccountDetailsTxRaw {
-			for a := range selfAddrDesc {
-				addresses = append(addresses, a)
-			}
-		}
 
 	} else {
 		txCount = int(data.txCountEstimate)
@@ -569,7 +563,6 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 		UnconfirmedTxs:        unconfirmedTxs,
 		Transactions:          txs,
 		Txids:                 txids,
-		Addresses:             addresses,
 		UsedTokens:            usedTokens,
 		Tokens:                tokens,
 		XPubAddresses:         xpubAddresses,
