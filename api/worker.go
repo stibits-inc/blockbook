@@ -143,7 +143,9 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 	var tokens []TokenTransfer
 	var ethSpecific *EthereumSpecific
 	var blockhash string
-	var addresses []string
+	var addresses, ownerAddresses, otherAddresses []string
+	var direction int
+	var pDirection *int
 	if bchainTx.Confirmations > 0 {
 		if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 			ta, err = w.db.GetTxAddresses(bchainTx.Txid)
@@ -156,8 +158,8 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 			return nil, errors.Annotatef(err, "GetBlockHash %v", height)
 		}
 	}
-	var valInSat, valOutSat, feesSat big.Int
-	var pValInSat *big.Int
+	var valInSat, valOutSat, feesSat, walletValInSat, walletValOutSat, amountSat big.Int
+	var pValInSat, pAmountSat *big.Int
 	vins := make([]Vin, len(bchainTx.Vin))
 	rbf := false
 	for i := range bchainTx.Vin {
@@ -239,9 +241,9 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 			if len(vin.Addresses) != 0 {
 				if _, found := selfAddrDesc[vin.Addresses[0]]; found {
 					vin.IsXpubAddress = true
-					if option == AccountDetailsTxRaw {
-						addresses = append(addresses, vin.Addresses[0])
-					}	
+					if vin.ValueSat != nil {
+						walletValInSat.Add(&walletValInSat, (*big.Int)(vin.ValueSat))
+					}
 				}
 			}
 		}
@@ -269,7 +271,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 				}
 			}
 		}
-		
+
 		if ta != nil {
 			vout.Spent = ta.Outputs[i].Spent
 			if spendingTxs && vout.Spent {
@@ -279,15 +281,23 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 				}
 			}
 		}
-		vout.IsXpubAddress = false
+		
 		if selfAddrDesc != nil {
 			if len(vout.Addresses) != 0 {
 				if _, found := selfAddrDesc[vout.Addresses[0]]; found {
 					vout.IsXpubAddress = true
+					walletValOutSat.Add(&walletValOutSat, &bchainVout.ValueSat)
 					if option == AccountDetailsTxRaw {
-						addresses = append(addresses, vout.Addresses[0])
+						ownerAddresses = append(ownerAddresses, vout.Addresses[0])
 					}	
+				} else {
+					vout.IsXpubAddress = false
+					if option == AccountDetailsTxRaw {
+						otherAddresses = append(otherAddresses, vout.Addresses[0])
+					}
 				}
+			} else {
+				vout.IsXpubAddress = false
 			}
 		}
 	}
@@ -353,8 +363,26 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 		bchainTx.Blocktime = int64(w.mempool.GetTransactionTime(bchainTx.Txid))
 	}
 
+	
 	//TODO Case when (option = AccountDetailsTxRaw) should be reworked 
 	if option == AccountDetailsTxRaw {
+		amountSat.Add(&walletValOutSat, &feesSat)
+		if walletValInSat.Uint64() > 0 && walletValInSat.Uint64() == amountSat.Uint64() {
+			direction = 0
+			amountSat = walletValInSat
+			addresses = ownerAddresses
+		} else if walletValInSat.Uint64() > 0 {
+			direction = -1
+			amountSat.Sub(&walletValInSat, &walletValOutSat)
+			amountSat.Sub(&amountSat, &feesSat)
+			addresses = otherAddresses
+		} else {
+			direction = 1
+			amountSat = walletValOutSat
+			addresses = ownerAddresses
+		}
+		pAmountSat = &amountSat
+		pDirection = &direction
 		vins = nil
 		vouts = nil
 	}
@@ -368,6 +396,8 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 		Txid:             bchainTx.Txid,
 		ValueInSat:       (*Amount)(pValInSat),
 		ValueOutSat:      (*Amount)(&valOutSat),
+		Direction:        pDirection,
+		Amount:           (*Amount)(pAmountSat),
 		Version:          bchainTx.Version,
 		Hex:              bchainTx.Hex,
 		Rbf:              rbf,
