@@ -533,7 +533,9 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 		tokens = make([]Token, 0, 4)
 		xpubAddresses = make(map[string]struct{})
 	}
+	var unusedExtAddresse, unusedIntAddresse string
 	for ci, da := range data.addresses {
+		isUnusedAddresse := false
 		for i := range da {
 			ad := &da[i]
 			if ad.balance != nil {
@@ -541,6 +543,17 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 			}
 			if option > AccountDetailsBasic {
 				token := w.tokenFromXpubAddress(data, ad, ci, i, option)
+				if ad.balance == nil && isUnusedAddresse == false {
+					isUnusedAddresse = true
+					if filter.TokensToReturn == TokensToReturnUnused {
+						if ci == 0 {
+							unusedExtAddresse = token.Name
+						} else if ci == 1 {
+							unusedIntAddresse = token.Name
+						}
+					}
+					
+				}
 				if filter.TokensToReturn == TokensToReturnDerived ||
 					filter.TokensToReturn == TokensToReturnUsed && ad.balance != nil ||
 					filter.TokensToReturn == TokensToReturnNonzeroBalance && ad.balance != nil && !IsZeroBigInt(&ad.balance.BalanceSat) {
@@ -563,6 +576,8 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 		UnconfirmedTxs:        unconfirmedTxs,
 		Transactions:          txs,
 		Txids:                 txids,
+		UnusedExtAddr:         unusedExtAddresse,
+		UnusedIntAddr:         unusedIntAddresse,
 		UsedTokens:            usedTokens,
 		Tokens:                tokens,
 		XPubAddresses:         xpubAddresses,

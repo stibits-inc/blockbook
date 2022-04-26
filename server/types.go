@@ -237,8 +237,10 @@ const (
 	TokensToReturnNonzeroBalance TokensToReturn = 0
 	// TokensToReturnUsed - return tokens with some transfers (even if they have zero balance now)
 	TokensToReturnUsed TokensToReturn = 1
+	// TokensToReturnUnused - return 1 internal addresse and 1 external addresse (if they have zero balance now)
+	TokensToReturnUnused TokensToReturn = 2
 	// TokensToReturnDerived - return all derived tokens
-	TokensToReturnDerived TokensToReturn = 2
+	TokensToReturnDerived TokensToReturn = 3
 )
 
 // AddressFilter is used to filter data returned from GetAddress api method

@@ -243,8 +243,10 @@ const (
 	TokensToReturnNonzeroBalance TokensToReturn = 0
 	// TokensToReturnUsed - return tokens with some transfers (even if they have zero balance now)
 	TokensToReturnUsed TokensToReturn = 1
+	// TokensToReturnUnused - return 1 internal addresse and 1 external addresse (if they have zero balance now)
+	TokensToReturnUnused TokensToReturn = 2
 	// TokensToReturnDerived - return all derived tokens
-	TokensToReturnDerived TokensToReturn = 2
+	TokensToReturnDerived TokensToReturn = 3
 )
 
 // AddressFilter is used to filter data returned from GetAddress api method
@@ -271,6 +273,8 @@ type Address struct {
 	NonTokenTxs           int                   `json:"nonTokenTxs,omitempty"`
 	Transactions          []*Tx                 `json:"transactions,omitempty"`
 	Txids                 []string              `json:"txids,omitempty"`
+	UnusedExtAddr         string                `json:"unusedextaddr,omitempty"`
+	UnusedIntAddr         string                `json:"unusedintaddr,omitempty"`
 	Nonce                 string                `json:"nonce,omitempty"`
 	UsedTokens            int                   `json:"usedTokens,omitempty"`
 	Tokens                []Token               `json:"tokens,omitempty"`
