@@ -295,6 +295,7 @@ type Utxo struct {
 	Path          string        `json:"path,omitempty"`
 	Locktime      uint32        `json:"lockTime,omitempty"`
 	Coinbase      bool          `json:"coinbase,omitempty"`
+	ScriptPubKey  string        `json:"scriptpubkey,omitempty"`
 	Asset         *bchain.Asset `json:"asset,omitempty"`
 }
 

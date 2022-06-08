@@ -1346,12 +1346,13 @@ func (w *Worker) getAddrDescUtxo(addrDesc bchain.AddressDescriptor, ba *db.AddrB
 									coinbase = true
 								}
 								utxos = append(utxos, Utxo{
-									Txid:      bchainTx.Txid,
-									Vout:      int32(i),
-									AmountSat: (*Amount)(&vout.ValueSat),
-									Locktime:  bchainTx.LockTime,
-									Coinbase:  coinbase,
-									Asset:     vout.ScriptPubKey.Asset, //TODO MEHDI : TO CHECK
+									Txid:         bchainTx.Txid,
+									Vout:         int32(i),
+									AmountSat:    (*Amount)(&vout.ValueSat),
+									ScriptPubKey: vout.ScriptPubKey.Hex, //TODO MEHDI : TO CHECK
+									Locktime:     bchainTx.LockTime,
+									Coinbase:     coinbase,
+									Asset:        vout.ScriptPubKey.Asset, //TODO MEHDI : TO CHECK
 								})
 								inMempool[bchainTx.Txid] = struct{}{}
 							}
@@ -1406,6 +1407,7 @@ func (w *Worker) getAddrDescUtxo(addrDesc bchain.AddressDescriptor, ba *db.AddrB
 							Txid:          txid,
 							Vout:          utxo.Vout,
 							AmountSat:     (*Amount)(&utxo.ValueSat),
+							ScriptPubKey:  utxo.ScriptPubKey,
 							Height:        int(utxo.Height),
 							Confirmations: confirmations,
 							Coinbase:      coinbase,

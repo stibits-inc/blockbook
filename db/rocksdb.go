@@ -540,11 +540,12 @@ type TxAddresses struct {
 
 // Utxo holds information about unspent transaction output
 type Utxo struct {
-	BtxID    []byte
-	Vout     int32
-	Height   uint32
-	ValueSat big.Int
-	Asset    *bchain.Asset
+	BtxID        []byte
+	Vout         int32
+	Height       uint32
+	ValueSat     big.Int
+	ScriptPubKey string
+	Asset        *bchain.Asset
 }
 
 // AddrBalance stores number of transactions and balances of an address
@@ -735,12 +736,14 @@ func (d *RocksDB) processAddressesBitcoinType(block *bchain.Block, addresses add
 				}
 				balance.BalanceSat.Add(&balance.BalanceSat, &output.ValueSat)
 				balance.addUtxo(&Utxo{
-					BtxID:    btxID,
-					Vout:     int32(i),
-					Height:   block.Height,
-					ValueSat: output.ValueSat,
-					Asset:    tao.Asset,
+					BtxID:        btxID,
+					Vout:         int32(i),
+					Height:       block.Height,
+					ValueSat:     output.ValueSat,
+					ScriptPubKey: output.ScriptPubKey.Hex,
+					Asset:        tao.Asset,
 				})
+
 				counted := addToAddressesMap(addresses, strAddrDesc, btxID, int32(i))
 				if !counted {
 					balance.Txs++
@@ -1246,6 +1249,12 @@ func unpackAddrBalanceRavencoinType(buf []byte, txidUnpackedLen int, detail Addr
 			valueSat, ll := unpackBigint(buf[l:])
 			l += ll
 
+			scriptLen, VaruintLen := unpackVaruint(buf[l:])
+			l += VaruintLen
+			scriptPubKey := string(append([]byte(nil), buf[l:l+int(scriptLen)]...))
+
+			l += int(scriptLen)
+			
 			var asset *bchain.Asset
 			asset = nil
 			if isAsset == 1 {
@@ -1267,6 +1276,7 @@ func unpackAddrBalanceRavencoinType(buf []byte, txidUnpackedLen int, detail Addr
 				Vout:     int32(vout),
 				Height:   uint32(height),
 				ValueSat: valueSat,
+				ScriptPubKey: scriptPubKey,
 				Asset:    asset,
 			}
 			if detail == AddressBalanceDetailUTXO {
@@ -1302,6 +1312,13 @@ func packAddrBalanceRavencoinType(ab *AddrBalance, buf, varBuf []byte) []byte {
 			buf = append(buf, varBuf[:l]...)
 			l = packBigint(&utxo.ValueSat, varBuf)
 			buf = append(buf, varBuf[:l]...)
+
+            
+			l = packVaruint(uint(len(utxo.ScriptPubKey)), varBuf)
+			buf = append(buf, varBuf[:l]...)
+			buf = append(buf, utxo.ScriptPubKey...)
+
+
 
 			if utxo.Asset != nil {
 				assetLen := uint(len(utxo.Asset.Name))
