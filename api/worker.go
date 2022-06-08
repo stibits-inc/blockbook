@@ -386,16 +386,16 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 	//TODO Case when (option = AccountDetailsTxRaw) should be reworked
 	if option == AccountDetailsTxRaw || option == AccountDetailsTxAssetLight {
 		amountSat.Add(&walletValOutSat, &feesSat)
-		if walletValInSat.Uint64() > 0 && walletValInSat.Uint64() == amountSat.Uint64() && isAssetFound == false {
-			direction = 0
+		if walletValInSat.Uint64() > 0 && walletValInSat.Uint64() == amountSat.Uint64() {
 			amountSat = walletValInSat
-			addresses = ownerAddresses
-			//pAssets = assetsOwner
-		} else if walletValInSat.Uint64() > 0 && walletValInSat.Uint64() == amountSat.Uint64() && isAssetFound == true {
-			direction = -1
-			amountSat = walletValInSat
-			addresses = otherAddresses
-			pAssets = assetsExt
+			if isAssetFound == false {
+				direction = 0
+				addresses = ownerAddresses
+			} else {
+				direction = -1
+				addresses = otherAddresses
+				pAssets = assetsExt
+			}
 		} else if walletValInSat.Uint64() > 0 {
 			direction = -1
 			amountSat.Sub(&walletValInSat, &walletValOutSat)
