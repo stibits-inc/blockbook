@@ -2,7 +2,7 @@ package ravencoin
 
 import (
 	"encoding/binary"
-        "encoding/hex"
+	"encoding/hex"
 
 	"github.com/martinboehm/btcd/wire"
 	"github.com/martinboehm/btcutil/chaincfg"
@@ -131,6 +131,7 @@ func NewAssetFromScriptPubKey(script []byte, nStartingIndex int) (string, uint64
 	}
 	return name, amount
 }
+
 // GetAssetFromScriptPubKey returns asset for given address descriptor with flag if asset exist
 func (p *RavencoinParser) GetAssetFromScriptPubKey(ad []byte) (bchain.Asset, bool) {
 	var asset bchain.Asset
@@ -144,6 +145,7 @@ func (p *RavencoinParser) GetAssetFromScriptPubKey(ad []byte) (bchain.Asset, boo
 			asset = bchain.Asset{
 				Name:   string(assetName),
 				Amount: float64(assetAmount),
+				//TODO MEHDI : Add IPFS & UNIT
 			}
 			isAsset = true
 		}
@@ -151,6 +153,7 @@ func (p *RavencoinParser) GetAssetFromScriptPubKey(ad []byte) (bchain.Asset, boo
 
 	return asset, isAsset
 }
+
 // GetAssetFromAddressDesc returns asset for given address descriptor with flag if asset exist
 func (p *RavencoinParser) GetAssetFromAddressDesc(output *bchain.Vout) (bchain.Asset, bool) {
 	ad, err := hex.DecodeString(output.ScriptPubKey.Hex)

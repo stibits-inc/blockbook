@@ -671,6 +671,8 @@ func (s *PublicServer) getAddressQueryParams(r *http.Request, accountDetails api
 		accountDetails = api.AccountDetailsTxSpecific
 	case "txsraw":
 		accountDetails = api.AccountDetailsTxRaw
+	case "txsAsset":
+		accountDetails = api.AccountDetailsTxAssetLight
 	}
 	tokensToReturn := api.TokensToReturnNonzeroBalance
 	switch r.URL.Query().Get("tokens") {

@@ -235,6 +235,14 @@ func (p *BitcoinLikeParser) TxFromMsgTx(t *wire.MsgTx, parseAddresses bool) bcha
 			// missing: Asm,
 			// missing: Type,
 		}
+		/*asset, isAsset := p.GetAssetFromScriptPubKey(out.PkScript)
+		glog.Infof("Len = %d out.PkScript %x ", len(out.PkScript), out.PkScript)
+		if isAsset == true {
+			s.Asset = &bchain.Asset{
+				Name:   asset.Name,
+				Amount: asset.Amount,
+			}
+		}*/
 		var vs big.Int
 		vs.SetInt64(out.Value)
 		vout[i] = bchain.Vout{

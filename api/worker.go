@@ -13,7 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-	
+
 	"github.com/golang/glog"
 	"github.com/juju/errors"
 	"github.com/trezor/blockbook/bchain"
@@ -153,9 +153,11 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 				return nil, errors.Annotatef(err, "GetTxAddresses %v", bchainTx.Txid)
 			}
 		}
-		blockhash, err = w.db.GetBlockHash(uint32(height))
-		if err != nil {
-			return nil, errors.Annotatef(err, "GetBlockHash %v", height)
+		if option != AccountDetailsTxAssetLight {
+			blockhash, err = w.db.GetBlockHash(uint32(height))
+			if err != nil {
+				return nil, errors.Annotatef(err, "GetBlockHash %v", height)
+			}
 		}
 	}
 	var valInSat, valOutSat, feesSat, walletValInSat, walletValOutSat, amountSat big.Int
@@ -249,6 +251,8 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 		}
 	}
 	vouts := make([]Vout, len(bchainTx.Vout))
+	var isAssetFound = false
+	var assetsOwner, assetsExt *bchain.Asset
 	for i := range bchainTx.Vout {
 		bchainVout := &bchainTx.Vout[i]
 		vout := &vouts[i]
@@ -265,6 +269,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 		if err == nil {
 			asset, isAsset := w.chainParser.GetAssetFromScriptPubKey(ad)
 			if isAsset != false {
+			    isAssetFound = true
 				vout.Asset = &bchain.Asset{
 					Name:   asset.Name,
 					Amount: asset.Amount,
@@ -281,19 +286,34 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 				}
 			}
 		}
-		
+
 		if selfAddrDesc != nil {
 			if len(vout.Addresses) != 0 {
 				if _, found := selfAddrDesc[vout.Addresses[0]]; found {
 					vout.IsXpubAddress = true
 					walletValOutSat.Add(&walletValOutSat, &bchainVout.ValueSat)
-					if option == AccountDetailsTxRaw {
+					if option == AccountDetailsTxRaw || option == AccountDetailsTxAssetLight {
 						ownerAddresses = append(ownerAddresses, vout.Addresses[0])
-					}	
+					}
+					if vout.Asset != nil {
+						if assetsOwner == nil {
+							assetsOwner = vout.Asset
+						} else {
+							assetsOwner.Amount += vout.Asset.Amount
+						} 
+					}
+
 				} else {
 					vout.IsXpubAddress = false
-					if option == AccountDetailsTxRaw {
+					if option == AccountDetailsTxRaw || option == AccountDetailsTxAssetLight {
 						otherAddresses = append(otherAddresses, vout.Addresses[0])
+					}
+					if vout.Asset != nil {
+						if assetsExt == nil {
+							assetsExt = vout.Asset
+						} else {
+							assetsExt.Amount += vout.Asset.Amount
+						} 
 					}
 				}
 			} else {
@@ -362,35 +382,52 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 	if bchainTx.Confirmations == 0 {
 		bchainTx.Blocktime = int64(w.mempool.GetTransactionTime(bchainTx.Txid))
 	}
-
-	
-	//TODO Case when (option = AccountDetailsTxRaw) should be reworked 
-	if option == AccountDetailsTxRaw {
+	var pAssets *bchain.Asset
+	//TODO Case when (option = AccountDetailsTxRaw) should be reworked
+	if option == AccountDetailsTxRaw || option == AccountDetailsTxAssetLight {
 		amountSat.Add(&walletValOutSat, &feesSat)
-		if walletValInSat.Uint64() > 0 && walletValInSat.Uint64() == amountSat.Uint64() {
+		if walletValInSat.Uint64() > 0 && walletValInSat.Uint64() == amountSat.Uint64() && isAssetFound == false {
 			direction = 0
 			amountSat = walletValInSat
 			addresses = ownerAddresses
+			//pAssets = assetsOwner
+		} else if walletValInSat.Uint64() > 0 && walletValInSat.Uint64() == amountSat.Uint64() && isAssetFound == true {
+			direction = -1
+			amountSat = walletValInSat
+			addresses = otherAddresses
+			pAssets = assetsExt
 		} else if walletValInSat.Uint64() > 0 {
 			direction = -1
 			amountSat.Sub(&walletValInSat, &walletValOutSat)
 			amountSat.Sub(&amountSat, &feesSat)
 			addresses = otherAddresses
+			pAssets = assetsOwner
 		} else {
 			direction = 1
 			amountSat = walletValOutSat
 			addresses = ownerAddresses
+			pAssets = assetsExt
 		}
 		pAmountSat = &amountSat
 		pDirection = &direction
 		vins = nil
 		vouts = nil
 	}
+	var hex string
+	var pConfirmations uint32 //TODO 
+	//var pConfirmations *uint32
+	if option != AccountDetailsTxAssetLight {
+		hex = bchainTx.Hex
+		//pConfirmations = &bchainTx.Confirmations
+		
+	}
+	pConfirmations = bchainTx.Confirmations
+
 	r := &Tx{
 		Blockhash:        blockhash,
 		Blockheight:      height,
 		Blocktime:        bchainTx.Blocktime,
-		Confirmations:    bchainTx.Confirmations,
+		Confirmations:    pConfirmations,
 		FeesSat:          (*Amount)(&feesSat),
 		Locktime:         bchainTx.LockTime,
 		Txid:             bchainTx.Txid,
@@ -399,10 +436,11 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 		Direction:        pDirection,
 		Amount:           (*Amount)(pAmountSat),
 		Version:          bchainTx.Version,
-		Hex:              bchainTx.Hex,
+		Hex:              hex,
 		Rbf:              rbf,
 		Vin:              vins,
 		Vout:             vouts,
+		Assets:           pAssets,
 		Addresses:        addresses,
 		CoinSpecificData: sj,
 		TokenTransfers:   tokens,
@@ -1345,6 +1383,7 @@ func (w *Worker) getAddrDescUtxo(addrDesc bchain.AddressDescriptor, ba *db.AddrB
 								if len(bchainTx.Vin) == 1 && len(bchainTx.Vin[0].Coinbase) > 0 {
 									coinbase = true
 								}
+
 								utxos = append(utxos, Utxo{
 									Txid:         bchainTx.Txid,
 									Vout:         int32(i),
