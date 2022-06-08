@@ -1081,6 +1081,8 @@ func (s *PublicServer) apiUtxo(r *http.Request, apiVersion int) (interface{}, er
 	var utxo []api.Utxo
 	var err error
 	var unusedIntAddress *string
+	var balanceSat *api.Amount
+
 	if i := strings.LastIndexByte(r.URL.Path, '/'); i > 0 {
 		onlyConfirmed := false
 		c := r.URL.Query().Get("confirmed")
@@ -1105,7 +1107,7 @@ func (s *PublicServer) apiUtxo(r *http.Request, apiVersion int) (interface{}, er
 		if ec != nil {
 			gap = 0
 		}
-		utxo, unusedIntAddress, err = s.api.GetXpubUtxo(r.URL.Path[i+1:], onlyConfirmed, gap, includeAssets)
+		utxo, unusedIntAddress, balanceSat, err = s.api.GetXpubUtxo(r.URL.Path[i+1:], onlyConfirmed, gap, includeAssets)
 		if err == nil {
 			s.metrics.ExplorerViews.With(common.Labels{"action": "api-xpub-utxo"}).Inc()
 		} else {
@@ -1116,7 +1118,11 @@ func (s *PublicServer) apiUtxo(r *http.Request, apiVersion int) (interface{}, er
 			return s.api.AddressUtxoToV1(utxo), nil
 		}
 	}
-	utxoInfo := map[string]interface{}{"unusedIntAddr": unusedIntAddress, "utxos": utxo}
+	utxoInfo := map[string]interface{}{
+		"unusedIntAddr": unusedIntAddress,
+		"balance"      : balanceSat,
+		"utxos"        : utxo,
+	}
 	return utxoInfo, err
 }
 

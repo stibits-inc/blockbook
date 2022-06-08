@@ -587,11 +587,11 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 }
 
 // GetXpubUtxo returns unspent outputs for given xpub
-func (w *Worker) GetXpubUtxo(xpub string, onlyConfirmed bool, gap int, assets bool) (Utxos, *string, error) {
+func (w *Worker) GetXpubUtxo(xpub string, onlyConfirmed bool, gap int, assets bool) (Utxos, *string, *Amount, error) {
 	start := time.Now()
 	xd, err := w.chainParser.ParseXpub(xpub)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	data, _, inCache, err := w.getXpubData(xd, 0, 1, AccountDetailsBasic, &AddressFilter{
@@ -599,7 +599,7 @@ func (w *Worker) GetXpubUtxo(xpub string, onlyConfirmed bool, gap int, assets bo
 		OnlyConfirmed: onlyConfirmed,
 	}, gap)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	r := make(Utxos, 0, 8)
 	var unusedInternalAddr *string
@@ -622,7 +622,7 @@ func (w *Worker) GetXpubUtxo(xpub string, onlyConfirmed bool, gap int, assets bo
 			}
 			utxos, err := w.getAddrDescUtxo(ad.addrDesc, ad.balance, onlyConfirmed, onlyMempool)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			if len(utxos) > 0 {
 				t := w.tokenFromXpubAddress(data, ad, ci, i, AccountDetailsTokens)
@@ -637,7 +637,8 @@ func (w *Worker) GetXpubUtxo(xpub string, onlyConfirmed bool, gap int, assets bo
 	}
 	sort.Stable(r)
 	glog.Info("GetXpubUtxo ", xpub[:xpubLogPrefix], ", cache ", inCache, ", ", len(r), " utxos,  ", time.Since(start))
-	return r, unusedInternalAddr, nil
+	totalBalanceSat := (*Amount)(&data.balanceSat)
+	return r, unusedInternalAddr, totalBalanceSat, nil
 }
 
 // GetXpubBalanceHistory returns history of balance for given xpub
