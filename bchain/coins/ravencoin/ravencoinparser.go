@@ -141,10 +141,25 @@ func (p *RavencoinParser) GetAssetFromScriptPubKey(ad []byte) (bchain.Asset, boo
 	if l > 25 {
 		if ad[0] == 0x76 && ad[1] == 0xa9 && ad[2] == 0x14 && ad[l-1] == 0x75 {
 			nStartingIndex := AssetNameScriptOffset(ad)
+			assetType := uint(0)
+			if(nStartingIndex > 0){
+                
+                // Gets Asset Type from scriptPubKey
+                if (ad[nStartingIndex - 1] == 113) { //RVN_Q = 113
+                    assetType = 1 //NEW_ASSET
+                } else if (ad[nStartingIndex - 1] == 116) { //RVN_T 116
+                    assetType = 2 //TRANSFER
+                } else if (ad[nStartingIndex - 1] == 111) {//RVN_O 111
+                    assetType = 3 //OWNER
+                } else if (ad[nStartingIndex - 1] == 114) {//RVN_R 114
+                    assetType = 4 //REISSUE
+                }
+            }
 			assetName, assetAmount := NewAssetFromScriptPubKey(ad, nStartingIndex)
 			asset = bchain.Asset{
 				Name:   string(assetName),
 				Amount: float64(assetAmount),
+				Type:   assetType,
 				//TODO MEHDI : Add IPFS & UNIT
 			}
 			isAsset = true

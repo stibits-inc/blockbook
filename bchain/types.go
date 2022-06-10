@@ -273,6 +273,7 @@ type XpubDescriptor struct {
 type Asset struct {
 	Name   string  `json:"name"`
 	Amount float64 `json:"amount"`
+	Type   uint    `json:"type"`
 }
 
 type Assets struct {

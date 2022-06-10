@@ -716,6 +716,7 @@ func (d *RocksDB) processAddressesBitcoinType(block *bchain.Block, addresses add
 				tao.Asset = &bchain.Asset{
 					Name:   asset.Name,
 					Amount: asset.Amount,
+					Type:   asset.Type,
 				}
 			}
 			if d.chainParser.IsAddrDescIndexable(addrDesc) {
@@ -1156,6 +1157,8 @@ func appendTxOutputRavencoinType(txo *TxOutput, buf []byte, varBuf []byte) []byt
 		buf = append(buf, txo.Asset.Name...)
 		l = packVaruint64(uint64(txo.Asset.Amount), varBuf)
 		buf = append(buf, varBuf[:l]...)
+		l = packVaruint(txo.Asset.Type, varBuf)
+		buf = append(buf, varBuf[:l]...)
 	}
 
 	return buf
@@ -1264,10 +1267,13 @@ func unpackAddrBalanceRavencoinType(buf []byte, txidUnpackedLen int, detail Addr
 				l += int(assetLen)
 				amount, ll := unpackVaruint64(buf[l:])
 				l += ll
+				assetType, ll := unpackVaruint(buf[l:])
+				l += ll
 
 				asset = &bchain.Asset{
 					Name:   assetName,
 					Amount: float64(amount),
+					Type: assetType,
 				}
 			}
 
@@ -1326,6 +1332,8 @@ func packAddrBalanceRavencoinType(ab *AddrBalance, buf, varBuf []byte) []byte {
 				buf = append(buf, varBuf[:l]...)
 				buf = append(buf, utxo.Asset.Name...)
 				l = packVaruint64(uint64(utxo.Asset.Amount), varBuf)
+				buf = append(buf, varBuf[:l]...)
+				l = packVaruint(utxo.Asset.Type, varBuf)
 				buf = append(buf, varBuf[:l]...)
 			}
 		}
@@ -1399,10 +1407,13 @@ func unpackTxOutputRavencoinType(to *TxOutput, buf []byte) int {
 		assetName := string(append([]byte(nil), buf[al:al+int(assetLen)]...))
 		al += int(assetLen)
 		amount, l := unpackVaruint64(buf[al:])
+		al += l
+		assetType, l := unpackVaruint(buf[al:])
 
 		to.Asset = &bchain.Asset{
 			Name:   assetName,
 			Amount: float64(amount),
+			Type:   assetType,
 		}
 
 		al += l

@@ -273,6 +273,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 				vout.Asset = &bchain.Asset{
 					Name:   asset.Name,
 					Amount: asset.Amount,
+					Type:   asset.Type,
 				}
 			}
 		}
@@ -297,7 +298,10 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 					}
 					if vout.Asset != nil {
 						if assetsOwner == nil {
-							assetsOwner = vout.Asset
+							len := len(vout.Asset.Name)
+							if vout.Asset.Name[len - 1] != '!'{
+								assetsOwner = vout.Asset
+							}	
 						} else {
 							assetsOwner.Amount += vout.Asset.Amount
 						} 
@@ -309,8 +313,11 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 						otherAddresses = append(otherAddresses, vout.Addresses[0])
 					}
 					if vout.Asset != nil {
-						if assetsExt == nil {
-							assetsExt = vout.Asset
+						if assetsExt == nil {							
+							len := len(vout.Asset.Name)
+							if vout.Asset.Name[len - 1] != '!'{
+								assetsExt = vout.Asset
+							}	
 						} else {
 							assetsExt.Amount += vout.Asset.Amount
 						} 
@@ -406,7 +413,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 			direction = 1
 			amountSat = walletValOutSat
 			addresses = ownerAddresses
-			pAssets = assetsExt
+			pAssets = assetsOwner
 		}
 		pAmountSat = &amountSat
 		pDirection = &direction

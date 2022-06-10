@@ -33,6 +33,8 @@ const (
 	AccountDetailsTxSpecific
 	// AccountDetailsTxRaw - basic + tokens + full tx data specific for Ethereum Only, subject to paging
 	AccountDetailsTxRaw
+	// AccountDetailsTxAssetLight - basic + tokens + Rvn Asset + full tx data specific for Ethereum Only, subject to paging
+	AccountDetailsTxAssetLight
 	// AccountDetailsTxHistoryLight - basic + tokens + easily obtained tx data (not requiring requests to backend), subject to paging
 	AccountDetailsTxHistoryLight
 	// AccountDetailsTxHistory - basic + tokens + full tx data, subject to paging
