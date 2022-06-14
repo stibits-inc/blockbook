@@ -491,35 +491,37 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 		}
 		var from, to int
 		pg, from, to, page = computePaging(len(txc), page, txsOnPage)
-		if len(txc) >= txsOnPage {
-			if totalResults < 0 {
-				pg.TotalPages = -1
-			} else {
-				pg, _, _, _ = computePaging(totalResults, page, txsOnPage)
-			}
-		}
-
-		selfAddrDesc := make(map[string]struct{})
-		for _, da := range data.addresses {
-			for i := range da {
-				add, _, err := w.chainParser.GetAddressesFromAddrDesc(da[i].addrDesc)
-				if err == nil {
-					selfAddrDesc[string(add[0])] = struct{}{}
+		if pg.Page <= pg.TotalPages {
+			if len(txc) >= txsOnPage {
+				if totalResults < 0 {
+					pg.TotalPages = -1
+				} else {
+					pg, _, _, _ = computePaging(totalResults, page, txsOnPage)
 				}
 			}
-		}
 
-		// get confirmed transactions
-		for i := from; i < to; i++ {
-			xpubTxid := &txc[i]
-			if option == AccountDetailsTxidHistory {
-				txids = append(txids, xpubTxid.txid)
-			} else {
-				tx, err := w.txFromTxid(xpubTxid.txid, bestheight, option, nil, selfAddrDesc)
-				if err != nil {
-					return nil, err
+			selfAddrDesc := make(map[string]struct{})
+			for _, da := range data.addresses {
+				for i := range da {
+					add, _, err := w.chainParser.GetAddressesFromAddrDesc(da[i].addrDesc)
+					if err == nil {
+						selfAddrDesc[string(add[0])] = struct{}{}
+					}
 				}
-				txs = append(txs, tx)
+			}
+
+			// get confirmed transactions
+			for i := from; i < to; i++ {
+				xpubTxid := &txc[i]
+				if option == AccountDetailsTxidHistory {
+					txids = append(txids, xpubTxid.txid)
+				} else {
+					tx, err := w.txFromTxid(xpubTxid.txid, bestheight, option, nil, selfAddrDesc)
+					if err != nil {
+						return nil, err
+					}
+					txs = append(txs, tx)
+				}
 			}
 		}
 

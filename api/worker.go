@@ -763,9 +763,9 @@ func computePaging(count, page, itemsOnPage int) (Paging, int, int, int) {
 	if totalPages < 0 {
 		totalPages = 0
 	}
-	if from >= count {
+	/*if from >= count {
 		page = totalPages
-	}
+	}*/
 	from = page * itemsOnPage
 	to := (page + 1) * itemsOnPage
 	if to > count {
