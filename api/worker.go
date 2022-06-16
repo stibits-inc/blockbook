@@ -511,7 +511,6 @@ func (w *Worker) GetTransactionFromMempoolTx(mempoolTx *bchain.MempoolTx) (*Tx, 
 		valOutSat.Add(&valOutSat, &bchainVout.ValueSat)
 		vout.Hex = bchainVout.ScriptPubKey.Hex
 		vout.AddrDesc, vout.Addresses, vout.IsAddress, err = w.getAddressesFromVout(bchainVout)
-		vout.Asset = bchainVout.ScriptPubKey.Asset
 		if err != nil {
 			glog.V(2).Infof("getAddressesFromVout error %v, %v, output %v", err, mempoolTx.Txid, bchainVout.N)
 		}
@@ -1397,12 +1396,12 @@ func (w *Worker) getAddrDescUtxo(addrDesc bchain.AddressDescriptor, ba *db.AddrB
 									Txid:         bchainTx.Txid,
 									Vout:         int32(i),
 									AmountSat:    (*Amount)(&vout.ValueSat),
-									ScriptPubKey: vout.ScriptPubKey.Hex, //TODO MEHDI : TO CHECK
+									ScriptPubKey: vout.ScriptPubKey.Hex,
 									Locktime:     bchainTx.LockTime,
 									Coinbase:     coinbase,
-									Asset:        vout.ScriptPubKey.Asset, //TODO MEHDI : TO CHECK
+									Asset:        vout.ScriptPubKey.Asset,
 								})
-								inMempool[bchainTx.Txid] = struct{}{}
+									inMempool[bchainTx.Txid] = struct{}{}
 							}
 						}
 					}

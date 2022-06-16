@@ -799,6 +799,22 @@ func (b *BitcoinRPC) GetTransaction(txid string) (*bchain.Tx, error) {
 	}
 	tx, err := b.Parser.ParseTxFromJson(r)
 	tx.CoinSpecificData = r
+
+	for i := range tx.Vout {
+		vout := &tx.Vout[i]
+		script, err := hex.DecodeString(vout.ScriptPubKey.Hex)
+		if err == nil {
+			asset, isAsset := b.Parser.GetAssetFromScriptPubKey(script)
+			if isAsset == true {
+				vout.ScriptPubKey.Asset = &bchain.Asset{
+					Name:   asset.Name,
+					Amount: asset.Amount,
+					Type: asset.Type,
+				}
+			}
+		}
+	}
+	
 	if err != nil {
 		return nil, errors.Annotatef(err, "txid %v", txid)
 	}
