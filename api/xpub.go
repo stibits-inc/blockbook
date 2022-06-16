@@ -410,6 +410,17 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 		}
 		filtered = true
 	}
+
+	selfAddrDesc := make(map[string]struct{})
+	for _, da := range data.addresses {
+		for i := range da {
+			add, _, err := w.chainParser.GetAddressesFromAddrDesc(da[i].addrDesc)
+			if err == nil {
+				selfAddrDesc[string(add[0])] = struct{}{}
+			}
+		}
+	}
+
 	// process mempool, only if ToHeight is not specified
 	if filter.ToHeight == 0 && !filter.OnlyConfirmed {
 		txmMap = make(map[string]*Tx)
@@ -417,8 +428,6 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 		for _, da := range data.addresses {
 			for i := range da {
 				ad := &da[i]
-				//TODO MEHDI
-				var emptyVar map[string]struct{}
 				newTxids, _, err := w.xpubGetAddressTxids(ad.addrDesc, true, 0, 0, maxInt)
 				if err != nil {
 					return nil, err
@@ -427,7 +436,7 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 					// the same tx can have multiple addresses from the same xpub, get it from backend it only once
 					tx, foundTx := txmMap[txid.txid]
 					if !foundTx {
-						tx, err = w.GetTransaction(txid.txid, option, false, true, emptyVar)
+						tx, err = w.GetTransaction(txid.txid, option, false, true, selfAddrDesc)
 						// mempool transaction may fail
 						if err != nil || tx == nil {
 							glog.Warning("GetTransaction in mempool: ", err)
@@ -499,17 +508,6 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 					pg, _, _, _ = computePaging(totalResults, page, txsOnPage)
 				}
 			}
-
-			selfAddrDesc := make(map[string]struct{})
-			for _, da := range data.addresses {
-				for i := range da {
-					add, _, err := w.chainParser.GetAddressesFromAddrDesc(da[i].addrDesc)
-					if err == nil {
-						selfAddrDesc[string(add[0])] = struct{}{}
-					}
-				}
-			}
-
 			// get confirmed transactions
 			for i := from; i < to; i++ {
 				xpubTxid := &txc[i]
