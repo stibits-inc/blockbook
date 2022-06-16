@@ -149,7 +149,7 @@ func NewRocksDB(path string, cacheSize, maxOpenFiles int, parser bchain.BlockCha
 
 	cfNames = append([]string{}, cfBaseNames...)
 	chainType := parser.GetChainType()
-	if chainType == bchain.ChainBitcoinType {
+	if chainType == bchain.ChainBitcoinType || chainType == bchain.ChainRavencoinType {
 		cfNames = append(cfNames, cfNamesBitcoinType...)
 	} else if chainType == bchain.ChainEthereumType {
 		cfNames = append(cfNames, cfNamesEthereumType...)
@@ -450,7 +450,7 @@ func (d *RocksDB) ConnectBlock(block *bchain.Block) error {
 		return err
 	}
 	addresses := make(addressesMap)
-	if chainType == bchain.ChainBitcoinType {
+	if chainType == bchain.ChainBitcoinType || chainType == bchain.ChainRavencoinType {
 		txAddressesMap := make(map[string]*TxAddresses)
 		balances := make(map[string]*AddrBalance)
 		if err := d.processAddressesBitcoinType(block, addresses, txAddressesMap, balances); err != nil {
@@ -488,6 +488,10 @@ func (d *RocksDB) ConnectBlock(block *bchain.Block) error {
 	}
 	d.is.AppendBlockTime(uint32(block.Time))
 	return nil
+}
+
+func (d *RocksDB) processTxsBitcoinType(block *bchain.Block) {
+
 }
 
 // Addresses index
@@ -1378,6 +1382,7 @@ func (d *RocksDB) GetBlockInfoDetails(height uint32) (*BlockInfoDetails, error) 
 }
 
 func (d *RocksDB) writeHeightFromBlock(wb *gorocksdb.WriteBatch, block *bchain.Block, op int) error {
+
 	return d.writeHeight(wb, block.Height, &BlockInfo{
 		Hash:   block.Hash,
 		Time:   block.Time,
@@ -2017,7 +2022,7 @@ func (d *RocksDB) fixUtxo(addrDesc bchain.AddressDescriptor, ba *AddrBalance) (b
 
 // FixUtxos checks and fixes possible
 func (d *RocksDB) FixUtxos(stop chan os.Signal) error {
-	if d.chainParser.GetChainType() != bchain.ChainBitcoinType {
+	if d.chainParser.GetChainType() != bchain.ChainBitcoinType && d.chainParser.GetChainType() != bchain.ChainRavencoinType {
 		glog.Info("FixUtxos: applicable only for bitcoin type coins")
 		return nil
 	}

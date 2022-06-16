@@ -195,7 +195,7 @@ type Tx struct {
 	Size             int               `json:"size,omitempty"`
 	ValueOutSat      *Amount           `json:"value"`
 	ValueInSat       *Amount           `json:"valueIn,omitempty"`
-	Movement         *Amount           `json:"movement"`
+	Movement         *Amount           `json:"movement,omitempty"`
 	FeesSat          *Amount           `json:"fees,omitempty"`
 	Hex              string            `json:"hex,omitempty"`
 	Rbf              bool              `json:"rbf,omitempty"`
@@ -385,7 +385,8 @@ type BlockDetails struct {
 	Txs           uint32  `json:"txs"`
 	Confirmations int     `json:"confirmations"`
 	Size          int     `json:"size"`
-	Movement      big.Int `json:"movement"`
+	Movement      big.Int `json:"movement,omitempty"`
+	OutputsAmount big.Int `json:"outputsAmount,omitempty"`
 }
 
 type BlocksDetails struct {

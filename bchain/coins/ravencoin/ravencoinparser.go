@@ -2,7 +2,7 @@ package ravencoin
 
 import (
 	"encoding/binary"
-        "encoding/hex"
+	"encoding/hex"
 
 	"github.com/martinboehm/btcd/wire"
 	"github.com/martinboehm/btcutil/chaincfg"
@@ -70,37 +70,42 @@ func GetChainParams(chain string) *chaincfg.Params {
 
 // GetAddrDescFromVout returns internal address representation (descriptor) of given transaction output
 func (p *RavencoinParser) GetAddrDescFromVout(output *bchain.Vout) (bchain.AddressDescriptor, error) {
-        ad, err := hex.DecodeString(output.ScriptPubKey.Hex)
-        if err != nil {
-                return ad, err
-        }
+	ad, err := hex.DecodeString(output.ScriptPubKey.Hex)
+	if err != nil {
+		return ad, err
+	}
 
-        l := len(ad)
-        if l > 25 {
-                if ad[0] == 0x76 &&  ad[1] == 0xa9 && ad[2] == 0x14 && ad[l-1] == 0x75{
-                        add := ad[0 : 25]
-                        return add, err
-                }
-        }
+	l := len(ad)
+	if l > 25 {
+		if ad[0] == 0x76 && ad[1] == 0xa9 && ad[2] == 0x14 && ad[l-1] == 0x75 {
+			add := ad[0:25]
+			return add, err
+		}
+	}
 
-        // convert possible P2PK script to P2PKH
-        // so that all transactions by given public key are indexed together
-        return txscript.ConvertP2PKtoP2PKH(p.Params.Base58CksumHasher, ad)
+	// convert possible P2PK script to P2PKH
+	// so that all transactions by given public key are indexed together
+	return txscript.ConvertP2PKtoP2PKH(p.Params.Base58CksumHasher, ad)
 }
 
 // GetAddressesFromAddrDesc returns addresses for given address descriptor (asset supported)  with flag if the addresses are searchable
 func (p *RavencoinParser) GetAddressesFromAddrDesc(addrDesc bchain.AddressDescriptor) ([]string, bool, error) {
-        var addressDesc bchain.AddressDescriptor
-        addressDesc = addrDesc
-        l := binary.Size(addrDesc)
+	var addressDesc bchain.AddressDescriptor
+	addressDesc = addrDesc
+	l := binary.Size(addrDesc)
 
-        if l > 25 {
-                if addrDesc[0] == 0x76 &&  addrDesc[1] == 0xa9 && addrDesc[2] == 0x14 && addrDesc[l-1] == 0x75 {
-                	addressDesc = addrDesc[0:25]
-                }
-        }
+	if l > 25 {
+		if addrDesc[0] == 0x76 && addrDesc[1] == 0xa9 && addrDesc[2] == 0x14 && addrDesc[l-1] == 0x75 {
+			addressDesc = addrDesc[0:25]
+		}
+	}
 
-        return p.BitcoinLikeParser.GetAddressesFromAddrDesc(addressDesc)
+	return p.BitcoinLikeParser.GetAddressesFromAddrDesc(addressDesc)
+}
+
+// GetChainType is type of the blockchain, default is ChainBitcoinType
+func (p *RavencoinParser) GetChainType() bchain.ChainType {
+	return bchain.ChainRavencoinType
 }
 
 // PackTx packs transaction to byte array using protobuf

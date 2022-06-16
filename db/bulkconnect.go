@@ -332,7 +332,7 @@ func (b *BulkConnect) connectBlockEthereumType(block *bchain.Block, storeBlockTx
 // ConnectBlock connects block in bulk mode
 func (b *BulkConnect) ConnectBlock(block *bchain.Block, storeBlockTxs bool) error {
 	b.height = block.Height
-	if b.chainType == bchain.ChainBitcoinType {
+	if b.chainType == bchain.ChainBitcoinType || b.chainType == bchain.ChainRavencoinType {
 		return b.connectBlockBitcoinType(block, storeBlockTxs)
 	} else if b.chainType == bchain.ChainEthereumType {
 		return b.connectBlockEthereumType(block, storeBlockTxs)
@@ -347,7 +347,7 @@ func (b *BulkConnect) Close() error {
 	glog.Info("rocksdb: bulk connect closing")
 	start := time.Now()
 	var storeTxAddressesChan, storeBalancesChan, storeAddressContractsChan chan error
-	if b.chainType == bchain.ChainBitcoinType {
+	if b.chainType == bchain.ChainBitcoinType || b.chainType == bchain.ChainRavencoinType {
 		storeTxAddressesChan = make(chan error)
 		go b.parallelStoreTxAddresses(storeTxAddressesChan, true)
 		storeBalancesChan = make(chan error)

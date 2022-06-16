@@ -46,7 +46,7 @@ func NewWorker(db *db.RocksDB, chain bchain.BlockChain, mempool bchain.Mempool, 
 		is:          is,
 		metrics:     metrics,
 	}
-	if w.chainType == bchain.ChainBitcoinType {
+	if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 		w.initXpubCache()
 	}
 	return w, nil
@@ -142,7 +142,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 	var blockhash string
 	var txInputAddresses []string
 	if bchainTx.Confirmations > 0 {
-		if w.chainType == bchain.ChainBitcoinType {
+		if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 			ta, err = w.db.GetTxAddresses(bchainTx.Txid)
 			if err != nil {
 				return nil, errors.Annotatef(err, "GetTxAddresses %v", bchainTx.Txid)
@@ -155,6 +155,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 	}
 	var valInSat, valOutSat, feesSat, movement big.Int
 	var pValInSat *big.Int
+	var pMovement *big.Int
 	vins := make([]Vin, len(bchainTx.Vin))
 	rbf := false
 	for i := range bchainTx.Vin {
@@ -170,7 +171,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 		}
 		vin.Hex = bchainVin.ScriptSig.Hex
 		vin.Coinbase = bchainVin.Coinbase
-		if w.chainType == bchain.ChainBitcoinType {
+		if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 			//  bchainVin.Txid=="" is coinbase transaction
 			if bchainVin.Txid != "" {
 				// load spending addresses from TxAddresses
@@ -186,6 +187,10 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 							// try to get AddrDesc using coin specific handling and continue processing the tx
 							vin.AddrDesc = w.chainParser.GetAddrDescForUnknownInput(bchainTx, i)
 							vin.Addresses, vin.IsAddress, err = w.chainParser.GetAddressesFromAddrDesc(vin.AddrDesc)
+							if len(vin.Addresses) > 0 && vin.IsAddress {
+								txInputAddresses = append(txInputAddresses, vin.Addresses...)
+							}
+							glog.Infof("Tx Addresses %v", txInputAddresses)
 							if err != nil {
 								glog.Warning("GetAddressesFromAddrDesc tx ", bchainVin.Txid, ", addrDesc ", vin.AddrDesc, ": ", err)
 							}
@@ -208,7 +213,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 						if len(vin.Addresses) > 0 && vin.IsAddress {
 							txInputAddresses = append(txInputAddresses, vin.Addresses...)
 						}
-						fmt.Printf("%v", txInputAddresses)
+						glog.Infof("Tx Addresses %v", txInputAddresses)
 					}
 				} else {
 					if len(tas.Outputs) > int(vin.Vout) {
@@ -222,7 +227,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 						if len(vin.Addresses) > 0 && vin.IsAddress {
 							txInputAddresses = append(txInputAddresses, vin.Addresses...)
 						}
-						fmt.Printf("%v", txInputAddresses)
+						glog.Infof("Tx Addresses %v", txInputAddresses)
 					}
 				}
 				if vin.ValueSat != nil {
@@ -241,15 +246,24 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 		}
 	}
 	vouts := make([]Vout, len(bchainTx.Vout))
-	movement = *big.NewInt(valInSat.Int64())
+	//movement = *big.NewInt(valInSat.Int64())
 	for i := range bchainTx.Vout {
 		bchainVout := &bchainTx.Vout[i]
 		vout := &vouts[i]
 		vout.N = i
 		vout.ValueSat = (*Amount)(&bchainVout.ValueSat)
 		valOutSat.Add(&valOutSat, &bchainVout.ValueSat)
+		//movement.Add(&movement, &bchainVout.ValueSat)
 		vout.Hex = bchainVout.ScriptPubKey.Hex
 		vout.AddrDesc, vout.Addresses, vout.IsAddress, err = w.getAddressesFromVout(bchainVout)
+
+		if len(vout.Addresses) > 0 && vout.IsAddress {
+			for _, a := range vout.Addresses {
+				if !isAddressInList(a, txInputAddresses) {
+					movement.Add(&movement, (*big.Int)(vout.ValueSat))
+				}
+			}
+		}
 		if err != nil {
 			glog.V(2).Infof("getAddressesFromVout error %v, %v, output %v", err, bchainTx.Txid, bchainVout.N)
 		}
@@ -263,7 +277,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 			}
 		}
 	}
-	if w.chainType == bchain.ChainBitcoinType {
+	if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 		// for coinbase transactions valIn is 0
 		feesSat.Sub(&valInSat, &valOutSat)
 		if feesSat.Sign() == -1 {
@@ -324,6 +338,10 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 	if bchainTx.Confirmations == 0 {
 		bchainTx.Blocktime = int64(w.mempool.GetTransactionTime(bchainTx.Txid))
 	}
+	pMovement = &movement
+	if w.chainType != bchain.ChainRavencoinType {
+		pMovement = nil
+	}
 	r := &Tx{
 		Blockhash:        blockhash,
 		Blockheight:      height,
@@ -334,7 +352,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 		Txid:             bchainTx.Txid,
 		ValueInSat:       (*Amount)(pValInSat),
 		ValueOutSat:      (*Amount)(&valOutSat),
-		Movement:         (*Amount)(&movement),
+		Movement:         (*Amount)(pMovement),
 		Version:          bchainTx.Version,
 		Hex:              bchainTx.Hex,
 		Rbf:              rbf,
@@ -345,6 +363,15 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 		EthereumSpecific: ethSpecific,
 	}
 	return r, nil
+}
+
+func isAddressInList(address string, list []string) bool {
+	for _, b := range list {
+		if b == address {
+			return true
+		}
+	}
+	return false
 }
 
 // GetTransactionFromMempoolTx converts bchain.MempoolTx to Tx, with limited amount of data
@@ -370,7 +397,7 @@ func (w *Worker) GetTransactionFromMempoolTx(mempoolTx *bchain.MempoolTx) (*Tx, 
 		}
 		vin.Hex = bchainVin.ScriptSig.Hex
 		vin.Coinbase = bchainVin.Coinbase
-		if w.chainType == bchain.ChainBitcoinType {
+		if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 			//  bchainVin.Txid=="" is coinbase transaction
 			if bchainVin.Txid != "" {
 				vin.ValueSat = (*Amount)(&bchainVin.ValueSat)
@@ -404,7 +431,7 @@ func (w *Worker) GetTransactionFromMempoolTx(mempoolTx *bchain.MempoolTx) (*Tx, 
 			glog.V(2).Infof("getAddressesFromVout error %v, %v, output %v", err, mempoolTx.Txid, bchainVout.N)
 		}
 	}
-	if w.chainType == bchain.ChainBitcoinType {
+	if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 		// for coinbase transactions valIn is 0
 		feesSat.Sub(&valInSat, &valOutSat)
 		if feesSat.Sign() == -1 {
@@ -586,6 +613,8 @@ func GetUniqueTxids(txids []string) []string {
 func (w *Worker) txFromTxAddress(txid string, ta *db.TxAddresses, bi *db.BlockInfo, bestheight uint32) *Tx {
 	var err error
 	var valInSat, valOutSat, feesSat, movement big.Int
+	var pMovement *big.Int
+	var txInputAddresses []string
 	vins := make([]Vin, len(ta.Inputs))
 	for i := range ta.Inputs {
 		tai := &ta.Inputs[i]
@@ -597,9 +626,11 @@ func (w *Worker) txFromTxAddress(txid string, ta *db.TxAddresses, bi *db.BlockIn
 		if err != nil {
 			glog.Errorf("tai.Addresses error %v, tx %v, input %v, tai %+v", err, txid, i, tai)
 		}
+		if len(vin.Addresses) > 0 && vin.IsAddress {
+			txInputAddresses = append(txInputAddresses, vin.Addresses...)
+		}
 	}
 	vouts := make([]Vout, len(ta.Outputs))
-	movement = *big.NewInt(valInSat.Int64())
 	for i := range ta.Outputs {
 		tao := &ta.Outputs[i]
 		vout := &vouts[i]
@@ -610,12 +641,23 @@ func (w *Worker) txFromTxAddress(txid string, ta *db.TxAddresses, bi *db.BlockIn
 		if err != nil {
 			glog.Errorf("tai.Addresses error %v, tx %v, output %v, tao %+v", err, txid, i, tao)
 		}
+		if len(vout.Addresses) > 0 && vout.IsAddress {
+			for _, a := range vout.Addresses {
+				if !isAddressInList(a, txInputAddresses) {
+					movement.Add(&movement, (*big.Int)(vout.ValueSat))
+				}
+			}
+		}
 		vout.Spent = tao.Spent
 	}
 	// for coinbase transactions valIn is 0
 	feesSat.Sub(&valInSat, &valOutSat)
 	if feesSat.Sign() == -1 {
 		feesSat.SetUint64(0)
+	}
+	pMovement = &movement
+	if w.chainType != bchain.ChainRavencoinType {
+		pMovement = nil
 	}
 	r := &Tx{
 		Blockhash:     bi.Hash,
@@ -626,7 +668,7 @@ func (w *Worker) txFromTxAddress(txid string, ta *db.TxAddresses, bi *db.BlockIn
 		Txid:          txid,
 		ValueInSat:    (*Amount)(&valInSat),
 		ValueOutSat:   (*Amount)(&valOutSat),
-		Movement:      (*Amount)(&movement),
+		Movement:      (*Amount)(pMovement),
 		Vin:           vins,
 		Vout:          vouts,
 	}
@@ -802,7 +844,7 @@ func (w *Worker) txFromTxid(txid string, bestheight uint32, option AccountDetail
 	var tx *Tx
 	var err error
 	// only ChainBitcoinType supports TxHistoryLight
-	if option == AccountDetailsTxHistoryLight && w.chainType == bchain.ChainBitcoinType {
+	if option == AccountDetailsTxHistoryLight && (w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType) {
 		ta, err := w.db.GetTxAddresses(txid)
 		if err != nil {
 			return nil, errors.Annotatef(err, "GetTxAddresses %v", txid)
@@ -981,7 +1023,7 @@ func (w *Worker) GetAddress(address string, page int, txsOnPage int, option Acco
 			}
 		}
 	}
-	if w.chainType == bchain.ChainBitcoinType {
+	if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 		totalReceived = ba.ReceivedSat()
 		totalSent = &ba.SentSat
 	}
@@ -1027,7 +1069,7 @@ func (w *Worker) balanceHistoryForTxid(addrDesc bchain.AddressDescriptor, txid s
 	var ta *db.TxAddresses
 	var bchainTx *bchain.Tx
 	var height uint32
-	if w.chainType == bchain.ChainBitcoinType {
+	if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 		ta, err = w.db.GetTxAddresses(txid)
 		if err != nil {
 			return nil, err
@@ -1062,7 +1104,7 @@ func (w *Worker) balanceHistoryForTxid(addrDesc bchain.AddressDescriptor, txid s
 		Txid:          txid,
 	}
 	countSentToSelf := false
-	if w.chainType == bchain.ChainBitcoinType {
+	if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 		// detect if this input is the first of selfAddrDesc
 		// to not to count sentToSelf multiple times if counting multiple xpub addresses
 		ownInputIndex := -1
@@ -1340,7 +1382,7 @@ func (w *Worker) getAddrDescUtxo(addrDesc bchain.AddressDescriptor, ba *db.AddrB
 
 // GetAddressUtxo returns unspent outputs for given address
 func (w *Worker) GetAddressUtxo(address string, onlyConfirmed bool) (Utxos, error) {
-	if w.chainType != bchain.ChainBitcoinType {
+	if !(w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType) {
 		return nil, NewAPIError("Not supported", true)
 	}
 	start := time.Now()
@@ -1428,13 +1470,30 @@ func (w *Worker) GetBlocksDetails(page int, blocksOnPage int) (*BlocksDetails, e
 		if err1 != nil {
 			return nil, err1
 		}
-		movement := big.NewInt(0)
-		for j := 0; j < len(bfi.Txs); j++ {
-			vout := big.NewInt(0)
-			for v := 0; v < len(bfi.Txs[j].Vout); v++ {
-				vout = vout.Add(vout, &bfi.Txs[j].Vout[v].ValueSat)
+		var valOutSat, movement big.Int
+		var pMovement *big.Int
+		var pValOutSat *big.Int
+		var blockInputAddresses []string
+
+		for _, tx := range bfi.Txs {
+			for _, vi := range tx.Vin {
+				blockInputAddresses = append(blockInputAddresses, vi.Addresses...)
 			}
-			movement = movement.Add(movement, vout)
+			for _, vo := range tx.Vout {
+				valOutSat.Add(&valOutSat, &vo.ValueSat)
+				for _, address := range vo.ScriptPubKey.Addresses {
+					if !isAddressInList(address, blockInputAddresses) {
+						movement.Add(&movement, &vo.ValueSat)
+					}
+				}
+			}
+		}
+		pMovement = &movement
+		pValOutSat = &valOutSat
+
+		if w.chainType != bchain.ChainRavencoinType {
+			pMovement = nil
+			pValOutSat = nil
 		}
 		r.Blocks[i-from] = BlockDetails{
 			Height:        bfi.Height,
@@ -1443,7 +1502,8 @@ func (w *Worker) GetBlocksDetails(page int, blocksOnPage int) (*BlocksDetails, e
 			Txs:           uint32(len(bfi.Txs)),
 			Confirmations: bfi.Confirmations,
 			Size:          bfi.Size,
-			Movement:      *movement,
+			Movement:      *pMovement,
+			OutputsAmount: *pValOutSat,
 		}
 	}
 	glog.Info("GetBlocks page ", page, ", ", time.Since(start))
@@ -1761,6 +1821,7 @@ func (w *Worker) GetBlock(bid string, page int, txsOnPage int) (*Block, error) {
 	txs = txs[:txi]
 	bi.Txids = nil
 	glog.Info("GetBlock ", bid, ", page ", page, ", ", time.Since(start))
+
 	return &Block{
 		Paging: pg,
 		BlockInfo: BlockInfo{
@@ -1834,7 +1895,7 @@ func (w *Worker) ComputeFeeStats(blockFrom, blockTo int, stopCompute chan os.Sig
 				Time:   bi.Time,
 			}
 			txids := bi.Txids
-			if w.chainType == bchain.ChainBitcoinType {
+			if w.chainType == bchain.ChainBitcoinType || w.chainType == bchain.ChainRavencoinType {
 				// skip the coinbase transaction
 				txids = txids[1:]
 			}

@@ -278,7 +278,7 @@ func (w *Worker) tokenFromXpubAddress(data *xpubData, ad *xpubAddress, changeInd
 }
 
 func (w *Worker) getXpubData(xd *bchain.XpubDescriptor, page int, txsOnPage int, option AccountDetails, filter *AddressFilter, gap int) (*xpubData, uint32, bool, error) {
-	if w.chainType != bchain.ChainBitcoinType {
+	if w.chainType != bchain.ChainBitcoinType && w.chainType != bchain.ChainRavencoinType {
 		return nil, 0, false, ErrUnsupportedXpub
 	}
 	var (

@@ -1207,6 +1207,7 @@ func (s *PublicServer) apiBlock(r *http.Request, apiVersion int) (interface{}, e
 			return s.api.BlockToV1(block), nil
 		}
 	}
+
 	return block, err
 }
 

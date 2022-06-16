@@ -64,7 +64,7 @@ type TxV1 struct {
 	ValueOutSat   big.Int  `json:"-"`
 	Size          int      `json:"size,omitempty"`
 	ValueIn       string   `json:"valueIn"`
-	Movement      string   `json:"movement"`
+	Movement      string   `json:"movement,omitempty"`
 	ValueInSat    big.Int  `json:"-"`
 	Fees          string   `json:"fees"`
 	FeesSat       big.Int  `json:"-"`
