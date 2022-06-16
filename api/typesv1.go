@@ -64,6 +64,7 @@ type TxV1 struct {
 	ValueOutSat   big.Int  `json:"-"`
 	Size          int      `json:"size,omitempty"`
 	ValueIn       string   `json:"valueIn"`
+	Movement      string   `json:"movement"`
 	ValueInSat    big.Int  `json:"-"`
 	Fees          string   `json:"fees"`
 	FeesSat       big.Int  `json:"-"`
@@ -161,6 +162,7 @@ func (w *Worker) TxToV1(tx *Tx) *TxV1 {
 		ValueInSat:    tx.ValueInSat.AsBigInt(),
 		ValueOut:      tx.ValueOutSat.DecimalString(d),
 		ValueOutSat:   tx.ValueOutSat.AsBigInt(),
+		Movement:      tx.Movement.DecimalString(d),
 		Version:       tx.Version,
 		Vin:           vinV1,
 		Vout:          voutV1,

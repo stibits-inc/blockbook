@@ -140,6 +140,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 	var tokens []TokenTransfer
 	var ethSpecific *EthereumSpecific
 	var blockhash string
+	var txInputAddresses []string
 	if bchainTx.Confirmations > 0 {
 		if w.chainType == bchain.ChainBitcoinType {
 			ta, err = w.db.GetTxAddresses(bchainTx.Txid)
@@ -152,7 +153,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 			return nil, errors.Annotatef(err, "GetBlockHash %v", height)
 		}
 	}
-	var valInSat, valOutSat, feesSat big.Int
+	var valInSat, valOutSat, feesSat, movement big.Int
 	var pValInSat *big.Int
 	vins := make([]Vin, len(bchainTx.Vin))
 	rbf := false
@@ -204,6 +205,10 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 						if err != nil {
 							glog.Errorf("getAddressesFromVout error %v, vout %+v", err, vout)
 						}
+						if len(vin.Addresses) > 0 && vin.IsAddress {
+							txInputAddresses = append(txInputAddresses, vin.Addresses...)
+						}
+						fmt.Printf("%v", txInputAddresses)
 					}
 				} else {
 					if len(tas.Outputs) > int(vin.Vout) {
@@ -214,6 +219,10 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 						if err != nil {
 							glog.Errorf("output.Addresses error %v, tx %v, output %v", err, bchainVin.Txid, i)
 						}
+						if len(vin.Addresses) > 0 && vin.IsAddress {
+							txInputAddresses = append(txInputAddresses, vin.Addresses...)
+						}
+						fmt.Printf("%v", txInputAddresses)
 					}
 				}
 				if vin.ValueSat != nil {
@@ -232,6 +241,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 		}
 	}
 	vouts := make([]Vout, len(bchainTx.Vout))
+	movement = *big.NewInt(valInSat.Int64())
 	for i := range bchainTx.Vout {
 		bchainVout := &bchainTx.Vout[i]
 		vout := &vouts[i]
@@ -324,6 +334,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 		Txid:             bchainTx.Txid,
 		ValueInSat:       (*Amount)(pValInSat),
 		ValueOutSat:      (*Amount)(&valOutSat),
+		Movement:         (*Amount)(&movement),
 		Version:          bchainTx.Version,
 		Hex:              bchainTx.Hex,
 		Rbf:              rbf,
@@ -574,7 +585,7 @@ func GetUniqueTxids(txids []string) []string {
 
 func (w *Worker) txFromTxAddress(txid string, ta *db.TxAddresses, bi *db.BlockInfo, bestheight uint32) *Tx {
 	var err error
-	var valInSat, valOutSat, feesSat big.Int
+	var valInSat, valOutSat, feesSat, movement big.Int
 	vins := make([]Vin, len(ta.Inputs))
 	for i := range ta.Inputs {
 		tai := &ta.Inputs[i]
@@ -588,6 +599,7 @@ func (w *Worker) txFromTxAddress(txid string, ta *db.TxAddresses, bi *db.BlockIn
 		}
 	}
 	vouts := make([]Vout, len(ta.Outputs))
+	movement = *big.NewInt(valInSat.Int64())
 	for i := range ta.Outputs {
 		tao := &ta.Outputs[i]
 		vout := &vouts[i]
@@ -614,6 +626,7 @@ func (w *Worker) txFromTxAddress(txid string, ta *db.TxAddresses, bi *db.BlockIn
 		Txid:          txid,
 		ValueInSat:    (*Amount)(&valInSat),
 		ValueOutSat:   (*Amount)(&valOutSat),
+		Movement:      (*Amount)(&movement),
 		Vin:           vins,
 		Vout:          vouts,
 	}

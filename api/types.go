@@ -195,6 +195,7 @@ type Tx struct {
 	Size             int               `json:"size,omitempty"`
 	ValueOutSat      *Amount           `json:"value"`
 	ValueInSat       *Amount           `json:"valueIn,omitempty"`
+	Movement         *Amount           `json:"movement"`
 	FeesSat          *Amount           `json:"fees,omitempty"`
 	Hex              string            `json:"hex,omitempty"`
 	Rbf              bool              `json:"rbf,omitempty"`
