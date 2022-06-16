@@ -362,7 +362,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 	// size:=len(bchainTx.Hex) / 2
 	var sj json.RawMessage
 	// return CoinSpecificData for all mempool transactions or if requested
-	if specificJSON || bchainTx.Confirmations == 0 {
+	if (specificJSON || bchainTx.Confirmations == 0) && option != AccountDetailsTxAssetLight{
 		sj, err = w.chain.GetTransactionSpecific(bchainTx)
 		if err != nil {
 			return nil, err
@@ -417,8 +417,10 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, opt
 		}
 		pAmountSat = &amountSat
 		pDirection = &direction
-		vins = nil
-		vouts = nil
+		if bchainTx.Confirmations != 0 {
+			vins = nil
+			vouts = nil
+		}
 	}
 	var hex string
 	var pConfirmations uint32 //TODO 

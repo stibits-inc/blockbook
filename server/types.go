@@ -33,12 +33,12 @@ const (
 	AccountDetailsTxSpecific
 	// AccountDetailsTxRaw - basic + tokens + full tx data specific for Ethereum Only, subject to paging
 	AccountDetailsTxRaw
-	// AccountDetailsTxAssetLight - basic + tokens + Rvn Asset + full tx data specific for Ethereum Only, subject to paging
-	AccountDetailsTxAssetLight
 	// AccountDetailsTxHistoryLight - basic + tokens + easily obtained tx data (not requiring requests to backend), subject to paging
 	AccountDetailsTxHistoryLight
 	// AccountDetailsTxHistory - basic + tokens + full tx data, subject to paging
 	AccountDetailsTxHistory
+	// AccountDetailsTxAssetLight - basic + tokens + Rvn Asset + full tx data specific for Ethereum Only, subject to paging
+	AccountDetailsTxAssetLight
 )
 
 // ErrUnsupportedXpub is returned when coin type does not support xpub address derivation or provided string is not an xpub
