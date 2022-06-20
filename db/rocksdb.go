@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -98,6 +99,7 @@ type RocksDB struct {
 	cache        *gorocksdb.Cache
 	maxOpenFiles int
 	cbs          connectBlockStats
+	chain        bchain.BlockChain
 }
 
 const (
@@ -144,7 +146,7 @@ func openDB(path string, c *gorocksdb.Cache, openFiles int) (*gorocksdb.DB, []*g
 
 // NewRocksDB opens an internal handle to RocksDB environment.  Close
 // needs to be called to release it.
-func NewRocksDB(path string, cacheSize, maxOpenFiles int, parser bchain.BlockChainParser, metrics *common.Metrics) (d *RocksDB, err error) {
+func NewRocksDB(path string, cacheSize, maxOpenFiles int, parser bchain.BlockChainParser, metrics *common.Metrics, chain bchain.BlockChain) (d *RocksDB, err error) {
 	glog.Infof("rocksdb: opening %s, required data version %v, cache size %v, max open files %v", path, dbVersion, cacheSize, maxOpenFiles)
 
 	cfNames = append([]string{}, cfBaseNames...)
@@ -164,7 +166,7 @@ func NewRocksDB(path string, cacheSize, maxOpenFiles int, parser bchain.BlockCha
 	}
 	wo := gorocksdb.NewDefaultWriteOptions()
 	ro := gorocksdb.NewDefaultReadOptions()
-	return &RocksDB{path, db, wo, ro, cfh, parser, nil, metrics, c, maxOpenFiles, connectBlockStats{}}, nil
+	return &RocksDB{path, db, wo, ro, cfh, parser, nil, metrics, c, maxOpenFiles, connectBlockStats{}, chain}, nil
 }
 
 func (d *RocksDB) closeDB() error {
@@ -445,7 +447,11 @@ func (d *RocksDB) ConnectBlock(block *bchain.Block) error {
 	}
 
 	chainType := d.chainParser.GetChainType()
-
+	var berr error
+	block, berr = d.processTxsRavencoinType(block)
+	if berr != nil {
+		return berr
+	}
 	if err := d.writeHeightFromBlock(wb, block, opInsert); err != nil {
 		return err
 	}
@@ -488,10 +494,6 @@ func (d *RocksDB) ConnectBlock(block *bchain.Block) error {
 	}
 	d.is.AppendBlockTime(uint32(block.Time))
 	return nil
-}
-
-func (d *RocksDB) processTxsBitcoinType(block *bchain.Block) {
-
 }
 
 // Addresses index
@@ -1234,11 +1236,16 @@ func (d *RocksDB) unpackNOutpoints(buf []byte) ([]outpoint, int, error) {
 
 // BlockInfo holds information about blocks kept in column height
 type BlockInfo struct {
-	Hash   string
-	Time   int64
-	Txs    uint32
-	Size   uint32
-	Height uint32 // Height is not packed!
+	Hash          string
+	Time          int64
+	Txs           uint32
+	Size          uint32
+	Height        uint32 // Height is not packed!
+	Movement      big.Int
+	OutputsAmount big.Int
+	Fees          big.Int
+	PoWReward     big.Int
+	PoWWinner     string
 }
 
 type BlockInfoDetails struct {
@@ -1272,6 +1279,16 @@ func (d *RocksDB) packBlockInfo(block *BlockInfo) ([]byte, error) {
 	packed = append(packed, varBuf[:l]...)
 	l = packVaruint(uint(block.Size), varBuf)
 	packed = append(packed, varBuf[:l]...)
+
+	ml := packBigint(&block.Movement, varBuf)
+	packed = append(packed, varBuf[:ml]...)
+	oal := packBigint(&block.OutputsAmount, varBuf)
+	packed = append(packed, varBuf[:oal]...)
+	fl := packBigint(&block.Fees, varBuf)
+	packed = append(packed, varBuf[:fl]...)
+	prl := packBigint(&block.PoWReward, varBuf)
+	packed = append(packed, varBuf[:prl]...)
+	packed = append(packed, []byte(block.PoWWinner)...)
 	return packed, nil
 }
 
@@ -1287,12 +1304,23 @@ func (d *RocksDB) unpackBlockInfo(buf []byte) (*BlockInfo, error) {
 	}
 	t := unpackUint(buf[pl:])
 	txs, l := unpackVaruint(buf[pl+4:])
-	size, _ := unpackVaruint(buf[pl+4+l:])
+	size, sl := unpackVaruint(buf[pl+4+l:])
+
+	movement, ml := unpackBigint(buf[pl+4+l+sl:])
+	outputs, oal := unpackBigint(buf[pl+4+l+sl+ml:])
+	fees, fl := unpackBigint(buf[pl+4+l+sl+ml+oal:])
+	powReward, prl := unpackBigint(buf[pl+4+l+sl+ml+oal+fl:])
+	powWinner := string(buf[pl+4+l+sl+ml+oal+fl+prl:])
 	return &BlockInfo{
-		Hash: txid,
-		Time: int64(t),
-		Txs:  uint32(txs),
-		Size: uint32(size),
+		Hash:          txid,
+		Time:          int64(t),
+		Txs:           uint32(txs),
+		Size:          uint32(size),
+		Movement:      movement,
+		OutputsAmount: outputs,
+		Fees:          fees,
+		PoWReward:     powReward,
+		PoWWinner:     powWinner,
 	}, nil
 }
 
@@ -1382,13 +1410,18 @@ func (d *RocksDB) GetBlockInfoDetails(height uint32) (*BlockInfoDetails, error) 
 }
 
 func (d *RocksDB) writeHeightFromBlock(wb *gorocksdb.WriteBatch, block *bchain.Block, op int) error {
-
+	glog.Infof("Write Block %v with movement %v", block.Height, block.Movement)
 	return d.writeHeight(wb, block.Height, &BlockInfo{
-		Hash:   block.Hash,
-		Time:   block.Time,
-		Txs:    uint32(len(block.Txs)),
-		Size:   uint32(block.Size),
-		Height: block.Height,
+		Hash:          block.Hash,
+		Time:          block.Time,
+		Txs:           uint32(len(block.Txs)),
+		Size:          uint32(block.Size),
+		Height:        block.Height,
+		Movement:      block.Movement,
+		OutputsAmount: block.OutputsAmount,
+		Fees:          block.Fees,
+		PoWReward:     block.PoWReward,
+		//PoWWinner:     block.PoWWinner,
 	}, op)
 }
 
@@ -2200,4 +2233,76 @@ func unpackBigint(buf []byte) (big.Int, int) {
 	l := int(buf[0]) + 1
 	r.SetBytes(buf[1:l])
 	return r, l
+}
+func (d *RocksDB) processTxsRavencoinType(block *bchain.Block) (*bchain.Block, error) {
+	var valInSat, valOutSat, movement, feesSat, PoWReward big.Int
+	var PoWWinnersAddresses []string
+
+	for n, tx := range block.Txs {
+		glog.Infof("Processing tx %v", tx.Txid)
+		var txInAddresses []string
+		// process inputs
+		for _, input := range tx.Vin {
+			if n == 0 { // coinbase Tx
+				for _, output := range tx.Vout {
+					PoWReward.Add(&PoWReward, &output.ValueSat)
+					//movement.Add(&movement, &output.ValueSat)
+					//valOutSat.Add(&valOutSat, &output.ValueSat)
+					valInSat.Add(&valInSat, &output.ValueSat)
+					PoWWinnersAddresses = append(PoWWinnersAddresses, output.ScriptPubKey.Addresses...)
+					//goto SKIP
+				}
+			} else {
+				var vout bchain.Vout
+				/*itx, _, err := d.GetTx(input.Txid)
+				if err == nil {
+					vout = &itx.Vout[input.Vout]
+				} else {*/
+				itx, err := d.chain.GetTransaction(input.Txid)
+				if itx != nil {
+					vout = itx.Vout[input.Vout]
+				} else {
+					glog.Errorf("Couldn't get tx by id %v, error : %v from Bchain", input.Txid, err)
+					return nil, err
+				}
+				//}
+
+				if len(vout.ScriptPubKey.Addresses) > 0 {
+					txInAddresses = append(txInAddresses, vout.ScriptPubKey.Addresses...)
+					valInSat.Add(&valInSat, &vout.ValueSat)
+				}
+
+			}
+		}
+
+		for _, output := range tx.Vout {
+			valOutSat.Add(&valOutSat, &output.ValueSat)
+			if output.ScriptPubKey.Addresses != nil {
+				for _, address := range output.ScriptPubKey.Addresses {
+					if !isAddressInList(address, txInAddresses) {
+						movement.Add(&movement, &output.ValueSat)
+					}
+				}
+			}
+		}
+	}
+
+	feesSat.Sub(&valInSat, &valOutSat)
+	//feesSat.Add(&feesSat, &PoWReward)
+	block.Movement = movement
+	block.OutputsAmount = valOutSat
+	block.PoWReward = PoWReward
+	block.PoWWinner = strings.Join(PoWWinnersAddresses, ",")
+	block.Fees = feesSat
+	return block, nil
+
+}
+
+func isAddressInList(address string, list []string) bool {
+	for _, b := range list {
+		if b == address {
+			return true
+		}
+	}
+	return false
 }

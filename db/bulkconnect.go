@@ -187,13 +187,22 @@ func (b *BulkConnect) connectBlockBitcoinType(block *bchain.Block, storeBlockTxs
 			go b.parallelStoreBalances(storeBalancesChan, false)
 		}
 	}
+	block, err := b.d.processTxsRavencoinType(block)
+	if err != nil {
+		return err
+	}
 	b.bulkAddresses = append(b.bulkAddresses, bulkAddresses{
 		bi: BlockInfo{
-			Hash:   block.Hash,
-			Time:   block.Time,
-			Txs:    uint32(len(block.Txs)),
-			Size:   uint32(block.Size),
-			Height: block.Height,
+			Hash:          block.Hash,
+			Time:          block.Time,
+			Txs:           uint32(len(block.Txs)),
+			Size:          uint32(block.Size),
+			Height:        block.Height,
+			Movement:      block.Movement,
+			OutputsAmount: block.OutputsAmount,
+			PoWReward:     block.PoWReward,
+			PoWWinner:     block.PoWWinner,
+			Fees:          block.Fees,
 		},
 		addresses: addresses,
 	})

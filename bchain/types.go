@@ -119,7 +119,12 @@ type MempoolTx struct {
 // Block is block header and list of transactions
 type Block struct {
 	BlockHeader
-	Txs []Tx `json:"tx"`
+	Movement      big.Int `json:"movement,omitempty"`
+	OutputsAmount big.Int `json:"outptsAmount,omitempty"`
+	PoWReward     big.Int `json:"powReward,omitempty"`
+	Fees          big.Int `json:"fees,omitempty"`
+	PoWWinner     string  `json:"powWinner,omitempty"`
+	Txs           []Tx    `json:"tx"`
 }
 
 type BlockFullDetails struct {
