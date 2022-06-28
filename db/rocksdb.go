@@ -1187,11 +1187,19 @@ func unpackAddrBalance(buf []byte, txidUnpackedLen int, detail AddressBalanceDet
 			l += ll
 			valueSat, ll := unpackBigint(buf[l:])
 			l += ll
+			
+			scriptLen, VaruintLen := unpackVaruint(buf[l:])
+			l += VaruintLen
+			scriptPubKey := string(append([]byte(nil), buf[l:l+int(scriptLen)]...))
+
+			l += int(scriptLen)
+
 			u := Utxo{
 				BtxID:    btxID,
 				Vout:     int32(vout),
 				Height:   uint32(height),
 				ValueSat: valueSat,
+				ScriptPubKey: scriptPubKey,
 			}
 			if detail == AddressBalanceDetailUTXO {
 				ab.Utxos = append(ab.Utxos, u)
@@ -1221,6 +1229,10 @@ func packAddrBalance(ab *AddrBalance, buf, varBuf []byte) []byte {
 			buf = append(buf, varBuf[:l]...)
 			l = packBigint(&utxo.ValueSat, varBuf)
 			buf = append(buf, varBuf[:l]...)
+
+			l = packVaruint(uint(len(utxo.ScriptPubKey)), varBuf)
+			buf = append(buf, varBuf[:l]...)
+			buf = append(buf, utxo.ScriptPubKey...)
 		}
 	}
 	return buf
@@ -1319,7 +1331,6 @@ func packAddrBalanceRavencoinType(ab *AddrBalance, buf, varBuf []byte) []byte {
 			l = packBigint(&utxo.ValueSat, varBuf)
 			buf = append(buf, varBuf[:l]...)
 
-            
 			l = packVaruint(uint(len(utxo.ScriptPubKey)), varBuf)
 			buf = append(buf, varBuf[:l]...)
 			buf = append(buf, utxo.ScriptPubKey...)
