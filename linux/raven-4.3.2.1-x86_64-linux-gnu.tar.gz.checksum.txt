@@ -1,2 +1,0 @@
-3md5   - 22a63625c33df7d6cfc7d53fa43ced0                                   raven-4.3.2.1-x86_64-linux-gnu.tar.gz
-sha256 - d57192a656e097d4442a102b525a2e730c6aec2949cd67667b61cf9dfbc5190e  raven-4.3.2.1-x86_64-linux-gnu.tar.gz
