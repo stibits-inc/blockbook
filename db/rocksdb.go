@@ -19,6 +19,7 @@ import (
 	"github.com/flier/gorocksdb"
 	"github.com/golang/glog"
 	"github.com/juju/errors"
+	geckoTypes "github.com/superoo7/go-gecko/v3/types"
 	"github.com/trezor/blockbook/bchain"
 	"github.com/trezor/blockbook/common"
 )
@@ -112,6 +113,10 @@ const (
 	// BitcoinType
 	cfAddressBalance
 	cfTxAddresses
+	// RavencoinType
+	cfAssets
+	cfTxAssets
+	cfAssetTxs30d
 	// EthereumType
 	cfAddressContracts = cfAddressBalance
 )
@@ -122,6 +127,7 @@ var cfBaseNames = []string{"default", "height", "addresses", "blockTxs", "transa
 
 // type specific columns
 var cfNamesBitcoinType = []string{"addressBalance", "txAddresses"}
+var cfNamesRavencoinType = []string{"assets", "txAssets", "assetTxs30d"}
 var cfNamesEthereumType = []string{"addressContracts"}
 
 func openDB(path string, c *gorocksdb.Cache, openFiles int) (*gorocksdb.DB, []*gorocksdb.ColumnFamilyHandle, error) {
@@ -153,6 +159,9 @@ func NewRocksDB(path string, cacheSize, maxOpenFiles int, parser bchain.BlockCha
 	chainType := parser.GetChainType()
 	if chainType == bchain.ChainBitcoinType || chainType == bchain.ChainRavencoinType {
 		cfNames = append(cfNames, cfNamesBitcoinType...)
+		if chainType == bchain.ChainRavencoinType {
+			cfNames = append(cfNames, cfNamesRavencoinType...)
+		}
 	} else if chainType == bchain.ChainEthereumType {
 		cfNames = append(cfNames, cfNamesEthereumType...)
 	} else {
@@ -393,6 +402,7 @@ func (d *RocksDB) GetAddrDescTransactions(addrDesc bchain.AddressDescriptor, low
 			continue
 		}
 		val := it.Value().Data()
+
 		if glog.V(2) {
 			glog.Infof("rocksdb: addresses %s: %s", hex.EncodeToString(key), hex.EncodeToString(val))
 		}
@@ -448,7 +458,7 @@ func (d *RocksDB) ConnectBlock(block *bchain.Block) error {
 
 	chainType := d.chainParser.GetChainType()
 	var berr error
-	block, berr = d.processTxsRavencoinType(block)
+	block, berr = d.processTxsRavencoinType(wb, block)
 	if berr != nil {
 		return berr
 	}
@@ -1248,6 +1258,43 @@ type BlockInfo struct {
 	PoWWinner     string
 }
 
+type AssetInfo struct {
+	Name           string   `json:"name"`
+	Amount         float64  `json:"amount"`
+	Units          int64    `json:"units,omitempty"`
+	Reissuable     int      `json:"reissuable,omitempty"`
+	HasIpfs        int      `json:"hasIpfs,omitempty"`
+	Height         uint32   `json:"height,"`
+	Message        string   `json:"message,omitempty"`
+	IpfsHash       string   `json:"ipfsHash,omitempty"`
+	GenesisTxid    string   `json:"genesisTxid,omitempty"`
+	Time           int64    `json:"time,omitempty"`
+	VerifierString string   `json:"verifier_string,omitempty"`
+	QualifierType  string   `json:"qualifier_type,omitempty"`
+	Address        string   `json:"address,omitempty"`
+	RestrictedName string   `json:"restricted_name,omitempty"`
+	RestrictedType string   `json:"restricted_type,omitempty"`
+	Holders        []Holder `json:"holders,omitempty,omitempty"`
+}
+
+type Holder struct {
+	Address string
+	Amount  float64
+}
+
+type AssetTransaction struct {
+	Name           string
+	Amount         float64
+	Address        string
+	Time           int64
+	Txid           string
+	Height         uint32
+	VerifierString string `json:"verifier_string,omitempty"`
+	QualifierType  string `json:"qualifier_type,omitempty"`
+	RestrictedName string `json:"restricted_name,omitempty"`
+	RestrictedType string `json:"restricted_type,omitempty"`
+}
+
 type BlockInfoDetails struct {
 	Hash          string
 	Time          int64
@@ -1410,7 +1457,6 @@ func (d *RocksDB) GetBlockInfoDetails(height uint32) (*BlockInfoDetails, error) 
 }
 
 func (d *RocksDB) writeHeightFromBlock(wb *gorocksdb.WriteBatch, block *bchain.Block, op int) error {
-	glog.Infof("Write Block %v with movement %v", block.Height, block.Movement)
 	return d.writeHeight(wb, block.Height, &BlockInfo{
 		Hash:          block.Hash,
 		Time:          block.Time,
@@ -1421,7 +1467,7 @@ func (d *RocksDB) writeHeightFromBlock(wb *gorocksdb.WriteBatch, block *bchain.B
 		OutputsAmount: block.OutputsAmount,
 		Fees:          block.Fees,
 		PoWReward:     block.PoWReward,
-		//PoWWinner:     block.PoWWinner,
+		PoWWinner:     block.PoWWinner,
 	}, op)
 }
 
@@ -2234,13 +2280,17 @@ func unpackBigint(buf []byte) (big.Int, int) {
 	r.SetBytes(buf[1:l])
 	return r, l
 }
-func (d *RocksDB) processTxsRavencoinType(block *bchain.Block) (*bchain.Block, error) {
+func (d *RocksDB) processTxsRavencoinType(wb *gorocksdb.WriteBatch, block *bchain.Block) (*bchain.Block, error) {
+	//glog.Infof("process block with height %v", block.Height)
 	var valInSat, valOutSat, movement, feesSat, PoWReward big.Int
-	var PoWWinnersAddresses []string
-
+	//var powWinner string
+	height := block.Height
+	time := block.Time
+	//glog.Infof("Block: %v time %v time", height, time)
 	for n, tx := range block.Txs {
-		glog.Infof("Processing tx %v", tx.Txid)
+		//glog.Infof("Processing tx %v", tx.Txid)
 		var txInAddresses []string
+		txid := tx.Txid
 		// process inputs
 		for _, input := range tx.Vin {
 			if n == 0 { // coinbase Tx
@@ -2249,15 +2299,14 @@ func (d *RocksDB) processTxsRavencoinType(block *bchain.Block) (*bchain.Block, e
 					//movement.Add(&movement, &output.ValueSat)
 					//valOutSat.Add(&valOutSat, &output.ValueSat)
 					valInSat.Add(&valInSat, &output.ValueSat)
-					PoWWinnersAddresses = append(PoWWinnersAddresses, output.ScriptPubKey.Addresses...)
+					if len(output.ScriptPubKey.Addresses) > 0 {
+						block.PoWWinner = output.ScriptPubKey.Addresses[0]
+					}
 					//goto SKIP
 				}
 			} else {
 				var vout bchain.Vout
-				/*itx, _, err := d.GetTx(input.Txid)
-				if err == nil {
-					vout = &itx.Vout[input.Vout]
-				} else {*/
+
 				itx, err := d.chain.GetTransaction(input.Txid)
 				if itx != nil {
 					vout = itx.Vout[input.Vout]
@@ -2265,11 +2314,15 @@ func (d *RocksDB) processTxsRavencoinType(block *bchain.Block) (*bchain.Block, e
 					glog.Errorf("Couldn't get tx by id %v, error : %v from Bchain", input.Txid, err)
 					return nil, err
 				}
-				//}
 
 				if len(vout.ScriptPubKey.Addresses) > 0 {
 					txInAddresses = append(txInAddresses, vout.ScriptPubKey.Addresses...)
 					valInSat.Add(&valInSat, &vout.ValueSat)
+				}
+
+				if vout.ScriptPubKey.Asset != nil {
+					//glog.Infof("Spend From An asset %v type %v", vout.ScriptPubKey.Asset.Name, vout.ScriptPubKey.Type)
+					d.SpendAssetInTx(vout.ScriptPubKey.Asset, vout.ScriptPubKey.Addresses, height, txid, time)
 				}
 
 			}
@@ -2284,15 +2337,23 @@ func (d *RocksDB) processTxsRavencoinType(block *bchain.Block) (*bchain.Block, e
 					}
 				}
 			}
+
+			if output.ScriptPubKey.Asset != nil {
+				d.ReceiveAssetFromTx(output.ScriptPubKey.Asset, output.ScriptPubKey.Addresses, output.ScriptPubKey.Type, height, txid, time)
+			}
+
+			if output.ScriptPubKey.AssetData != nil {
+				assetData := output.ScriptPubKey.AssetData
+				d.SpendOrReceiveAssetInTx(assetData.Name, assetData.Amount, output.ScriptPubKey.Addresses[0], height, txid, time)
+			}
+
 		}
 	}
 
 	feesSat.Sub(&valInSat, &valOutSat)
-	//feesSat.Add(&feesSat, &PoWReward)
 	block.Movement = movement
 	block.OutputsAmount = valOutSat
 	block.PoWReward = PoWReward
-	block.PoWWinner = strings.Join(PoWWinnersAddresses, ",")
 	block.Fees = feesSat
 	return block, nil
 
@@ -2305,4 +2366,520 @@ func isAddressInList(address string, list []string) bool {
 		}
 	}
 	return false
+}
+
+func packFloat64(f float64, buffer []byte) int {
+	var buf bytes.Buffer
+	err := binary.Write(&buf, binary.BigEndian, f)
+	if err != nil {
+		fmt.Println("binary.Write failed: ", err)
+	}
+	buffer = append(buffer, buf.Bytes()...)
+	return len(buf.Bytes())
+}
+
+func (d *RocksDB) SpendAssetInTx(asset *bchain.Asset, addresses []string, height uint32, txid string, time int64) error {
+	address := strings.Join(addresses, ",")
+	var err error
+	err = d.updateAsset(&AssetInfo{Name: asset.Name}, address, -asset.Amount)
+	err = d.saveCountByType("transfer_asset", truncate(time))
+	err = d.SpendOrReceiveAssetInTx(asset.Name, -asset.Amount, address, height, txid, time)
+	return err
+}
+
+func (d *RocksDB) ReceiveAssetFromTx(asset *bchain.Asset, addresses []string, Type string, height uint32, txid string, time int64) error {
+	address := strings.Join(addresses, ",")
+	switch Type {
+	case "new_asset":
+		assetInfo := &AssetInfo{
+			Name:        asset.Name,
+			Amount:      asset.Amount,
+			Units:       asset.Units,
+			Reissuable:  asset.Reissuable,
+			HasIpfs:     asset.HasIpfs,
+			Height:      height,
+			IpfsHash:    asset.IpfsHash,
+			GenesisTxid: txid,
+			Time:        time,
+			Holders:     []Holder{Holder{Address: address, Amount: asset.Amount}},
+		}
+		d.SpendOrReceiveAssetInTx(asset.Name, -asset.Amount, "New Asset", height, txid, time)
+		d.SpendOrReceiveAssetInTx(asset.Name, asset.Amount, address, height, txid, time)
+		err := d.writeAsset(assetInfo)
+		d.saveCountByType(Type, truncate(time))
+
+		if strings.HasSuffix(asset.Name, "!") {
+			d.IncrementAdminAssets("adminAssetsCount")
+		} else {
+			d.IncrementAdminAssets("nonAdminAssetsCount")
+		}
+
+		return err
+	case "reissue_asset":
+		assetInfo := &AssetInfo{
+			Name:       asset.Name,
+			Units:      asset.Units,
+			Reissuable: asset.Reissuable,
+			HasIpfs:    asset.HasIpfs,
+			IpfsHash:   asset.IpfsHash,
+		}
+		d.SpendOrReceiveAssetInTx(asset.Name, -asset.Amount, "Reissue Asset", height, txid, time)
+		d.SpendOrReceiveAssetInTx(asset.Name, asset.Amount, address, height, txid, time)
+		err := d.updateAsset(assetInfo, address, asset.Amount)
+		d.saveCountByType(Type, truncate(time))
+		return err
+	case "transfer_asset":
+		d.updateAsset(&AssetInfo{Name: asset.Name}, address, asset.Amount)
+		return d.SpendOrReceiveAssetInTx(asset.Name, asset.Amount, address, height, txid, time)
+
+	default: //nullassetdata
+		return nil
+
+	}
+
+}
+
+func (d *RocksDB) SpendOrReceiveAssetInTx(Name string, amount float64, address string, height uint32, txid string, time int64) (err error) {
+	return d.PutAssetTx(&AssetTransaction{
+		Name:    Name,
+		Amount:  amount,
+		Address: address,
+		Time:    time,
+		Txid:    txid,
+		Height:  height,
+	})
+}
+
+func find(sh []Holder, exist func(Holder) bool) (holders *Holder, index int) {
+	for i, h := range sh {
+		if exist(h) {
+			return &h, i
+		}
+	}
+	return nil, -1
+}
+
+func (d *RocksDB) IncrementAdminAssets(keyName string) {
+	adminAssetsBuf, err := d.db.GetCF(d.ro, d.cfh[cfDefault], []byte(keyName))
+	var adminAssets int
+	if err != nil {
+		adminAssets = 1
+		adminAssetsBuf1 := make([]byte, vlq.MaxLen64)
+		packVarint(adminAssets, adminAssetsBuf1)
+		d.db.PutCF(d.wo, d.cfh[cfDefault], []byte(keyName), adminAssetsBuf1)
+	}
+	adminAssets, _ = unpackVarint(adminAssetsBuf.Data())
+	adminAssets += 1
+	adminAssetsBuf2 := make([]byte, vlq.MaxLen64)
+	packVarint(adminAssets, adminAssetsBuf2)
+
+	d.db.PutCF(d.wo, d.cfh[cfDefault], []byte(keyName), adminAssetsBuf2)
+}
+
+func (d *RocksDB) GetAdminAssetsCount(keyName string) (int, error) {
+	adminAssetsBuf, err := d.db.GetCF(d.ro, d.cfh[cfDefault], []byte(keyName))
+	if err != nil {
+		return 0, err
+	}
+	adminAssets, _ := unpackVarint(adminAssetsBuf.Data())
+	return adminAssets, nil
+}
+
+func (d *RocksDB) writeAsset(ai *AssetInfo) error {
+	key := []byte(ai.Name)
+	val, err := json.Marshal(ai)
+	if err != nil {
+		return err
+	}
+	d.db.PutCF(d.wo, d.cfh[cfAssets], key, val)
+
+	return nil
+}
+
+func (d *RocksDB) updateAsset(ai *AssetInfo, address string, amount float64) error {
+	assetInfo, err := d.GetAsset(ai.Name)
+	if err != nil {
+		return err
+	}
+	if ai != nil {
+		if ai.Units != 0 {
+			assetInfo.Units = ai.Units
+		}
+		if ai.Reissuable != 0 {
+			assetInfo.Reissuable = ai.Reissuable
+		}
+		if ai.HasIpfs != 0 {
+			assetInfo.HasIpfs = ai.HasIpfs
+		}
+		if len(ai.IpfsHash) > 0 {
+			assetInfo.IpfsHash = ai.IpfsHash
+		}
+	}
+
+	holder, index := find(assetInfo.Holders, func(holder Holder) bool { return holder.Address == address })
+	if index != -1 {
+		holder.Amount = holder.Amount + amount
+		assetInfo.Holders[index] = *holder
+	} else {
+		assetInfo.Holders = append(assetInfo.Holders, Holder{Address: address, Amount: amount})
+	}
+	return d.writeAsset(assetInfo)
+
+}
+
+func (d *RocksDB) GetAsset(name string) (*AssetInfo, error) {
+
+	key := []byte(name)
+	assetBuf, err := d.db.GetCF(d.ro, d.cfh[cfAssets], key)
+	var assetInfo *AssetInfo
+	if err != nil {
+		return nil, err
+	}
+	json.Unmarshal(assetBuf.Data(), &assetInfo)
+	return assetInfo, nil
+}
+
+func (d *RocksDB) PutAssetTx(assetTx *AssetTransaction) error {
+	//var assetTxs []*AssetTransaction
+	var lastAssetTxIndex uint32 = 0
+	latiKey := []byte("last-asset-tx-index")
+	lastAssetTxIndexBuf, _ := d.db.GetCF(d.ro, d.cfh[cfDefault], latiKey)
+
+	if lastAssetTxIndexBuf.Data() != nil {
+		lastAssetTxIndex = unpackUint(lastAssetTxIndexBuf.Data())
+	}
+	/*if assetTxsBuf.Data() != nil {
+		if unmarErr := json.Unmarshal(assetTxsBuf.Data(), &assetTxs); unmarErr != nil {
+			glog.Infof("Error Unmarshal Tx Assets %v", unmarErr)
+		}
+
+	}*/
+	//assetTxs = append(assetTxs, assetTx)
+
+	//glog.Infof("Saving assetTxs %v", len(assetTxs))
+	val, marErr := json.Marshal(assetTx)
+	if marErr != nil {
+		glog.Infof("Error marshal Tx Assets %v", marErr)
+		return marErr
+	}
+	key := packUint(lastAssetTxIndex + 1)
+	d.db.PutCF(d.wo, d.cfh[cfDefault], latiKey, key)
+	return d.db.PutCF(d.wo, d.cfh[cfTxAssets], key, val)
+}
+
+func (d *RocksDB) GetAssetTxs() ([]AssetTransaction, error) {
+	var assetTxs []AssetTransaction
+	key := []byte("recent-assets-movements")
+	assetTxsBuf, err := d.db.GetCF(d.ro, d.cfh[cfDefault], key)
+	if err != nil {
+		return nil, err
+	}
+	json.Unmarshal(assetTxsBuf.Data(), &assetTxs)
+	return assetTxs, nil
+}
+
+func (d *RocksDB) GetLastAssetTxIndex() (uint32, error) {
+	var lastAssetTxIndex uint32 = 0
+	latiKey := []byte("last-asset-tx-index")
+	lastAssetTxIndexBuf, err := d.db.GetCF(d.ro, d.cfh[cfDefault], latiKey)
+	if err != nil {
+		return lastAssetTxIndex, err
+	}
+	lastAssetTxIndex = unpackUint(lastAssetTxIndexBuf.Data())
+	return lastAssetTxIndex, nil
+
+}
+
+func (d *RocksDB) GetAssetTx(index uint32) (*AssetTransaction, error) {
+	txIndex := packUint(index)
+	assetTxBuf, err := d.db.GetCF(d.ro, d.cfh[cfTxAssets], txIndex)
+	if err != nil {
+		return nil, err
+	}
+	var assetTx *AssetTransaction
+	if err := json.Unmarshal(assetTxBuf.Data(), &assetTx); err != nil {
+		return nil, err
+	}
+	return assetTx, nil
+}
+
+// increment asset type count
+func (d *RocksDB) saveCountByType(assetType string, truncatedTime int64) error {
+	key := []byte(fmt.Sprint(assetType, truncatedTime))
+	//glog.Infof("Time: %v", truncatedTime)
+
+	//glog.Infof("Set Or Update aset count type: %v", fmt.Sprint(assetType, truncatedTime))
+	countSlice := d.GetCountByType(assetType, truncatedTime)
+	valBuf := make([]byte, 8)
+	packVarint(countSlice+1, valBuf)
+	return d.db.PutCF(d.wo, d.cfh[cfAssetTxs30d], key, valBuf)
+}
+
+func (d *RocksDB) GetCountByType(assetType string, truncatedTime int64) int {
+	//truncated := truncate(Time)
+	key := []byte(fmt.Sprint(assetType, truncatedTime))
+	countSlice, _ := d.db.GetCF(d.ro, d.cfh[cfAssetTxs30d], key)
+	var val int
+	if countSlice.Data() != nil {
+		unpackedVal, _ := unpackVarint(countSlice.Data())
+		val = unpackedVal
+	} else {
+		val = 0
+	}
+	return val
+}
+
+func truncate(timestamp int64) int64 {
+	t := time.Unix(timestamp, 0)
+	trunc := t.Truncate(time.Hour)
+	return trunc.Unix()
+}
+
+func (d *RocksDB) PutCoinMarket(market *geckoTypes.CoinsMarketItem) error {
+	key := []byte("market")
+	marketBuf, err := json.Marshal(market)
+	if err != nil {
+		glog.Errorf("Error Marshalling market data %v", err)
+	}
+	return d.db.PutCF(d.wo, d.cfh[cfDefault], key, marketBuf)
+}
+
+func (d *RocksDB) GetMarket() (*geckoTypes.CoinsMarketItem, error) {
+	key := []byte("market")
+	var market *geckoTypes.CoinsMarketItem
+	marketBuf, err := d.db.GetCF(d.ro, d.cfh[cfDefault], key)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(marketBuf.Data(), market)
+	if err != nil {
+		glog.Errorf("Error Marshalling market data %v", err)
+	}
+	return market, err
+}
+
+func (d *RocksDB) PutCoinMarketChart(market *geckoTypes.CoinsIDMarketChart) error {
+	key := []byte("market")
+	markeCharttBuf, err := json.Marshal(market)
+	if err != nil {
+		glog.Errorf("Error Marshalling market data %v", err)
+	}
+	return d.db.PutCF(d.wo, d.cfh[cfDefault], key, markeCharttBuf)
+}
+
+func (d *RocksDB) GetMarketChart() (*geckoTypes.CoinsIDMarketChart, error) {
+	key := []byte("market")
+	var marketChart *geckoTypes.CoinsIDMarketChart
+	marketChartBuf, err := d.db.GetCF(d.ro, d.cfh[cfDefault], key)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(marketChartBuf.Data(), marketChart)
+	if err != nil {
+		glog.Errorf("Error Marshalling market data %v", err)
+	}
+	return marketChart, err
+}
+
+func (d *RocksDB) RunScheduleCounter() {
+	for true {
+		if !d.is.InitialSync {
+			d.calculateOverview()
+		}
+		time.Sleep(1 * time.Minute)
+	}
+
+}
+
+func (d *RocksDB) calculateOverview() {
+	//glog.Info("Start Call db.RunScheduleCounter()")
+	/* Calculate circulating Supply*/
+	var circulatingSupply big.Int
+	it := d.db.NewIteratorCF(d.ro, d.cfh[cfAddressBalance])
+	for it.SeekToFirst(); it.Valid(); it.Next() {
+		addrBalance, _ := unpackAddrBalance(it.Value().Data(), d.chainParser.PackedTxidLen(), 0)
+		circulatingSupply.Add(&circulatingSupply, &addrBalance.BalanceSat)
+	}
+	circulatingSupplyBuf := make([]byte, vlq.MaxLen64)
+	packBigint(&circulatingSupply, circulatingSupplyBuf)
+	d.db.PutCF(d.wo, d.cfh[cfDefault], []byte("circulatingSupply"), circulatingSupplyBuf)
+
+	bestHeight, _, _ := d.GetBestBlock()
+	block, _ := d.GetBlockInfo(bestHeight)
+	//glog.Info("Get Best Block")
+
+	maxTime := block.Time
+	reachedBlock, _ := d.GetBlockInfo(bestHeight - 1)
+	//glog.Info("Get Reached Block")
+
+	var minTime int64 = reachedBlock.Time
+	for i := bestHeight - 2; reachedBlock.Time >= (maxTime - 86400); i-- {
+		reachedBlock, _ = d.GetBlockInfo(i)
+		minTime = reachedBlock.Time
+	}
+	//glog.Infof("Get Min Time maxTime %v minTime %v", maxTime, minTime)
+
+	blockspacing := (maxTime - minTime) / int64(bestHeight-reachedBlock.Height)
+	glog.Infof("Get blockspacing %v", blockspacing)
+	d.db.PutCF(d.wo, d.cfh[cfDefault], []byte("blockspacing"), packUint(uint32(blockspacing)))
+	glog.Info("Get blockspacing")
+
+	var blockTimeBefore1Month int64 = maxTime - 2592000
+	//glog.Info("Start Calculate newAssetInHourCounts, reissueAssetInHourCounts, transferAssetInHourCounts")
+
+	var newAssetInHourCounts [][]int64
+	var reissueAssetInHourCounts [][]int64
+	var transferAssetInHourCounts [][]int64
+
+	time24h := maxTime - 86400
+	var last24hCreatedAssets int
+	var last24hTxAssets int
+	truncatedTime := truncate(blockTimeBefore1Month)
+
+	for Time := truncatedTime; Time <= maxTime; Time += 3600 {
+		newAssetInHour := d.GetCountByType("new_asset", Time)
+		if Time >= time24h {
+			last24hCreatedAssets += int(newAssetInHour)
+			last24hTxAssets += int(newAssetInHour)
+		}
+		newAssetInHourCounts = append(newAssetInHourCounts, []int64{Time, int64(newAssetInHour)})
+
+		reissueAssetInHour := d.GetCountByType("reissue_asset", Time)
+		if Time >= time24h {
+			last24hTxAssets += int(reissueAssetInHour)
+		}
+		reissueAssetInHourCounts = append(reissueAssetInHourCounts, []int64{Time, int64(reissueAssetInHour)})
+
+		transferAssetInHour := d.GetCountByType("transfer_asset", Time)
+		if Time >= time24h {
+			last24hTxAssets += int(transferAssetInHour)
+		}
+		transferAssetInHourCounts = append(transferAssetInHourCounts, []int64{Time, int64(transferAssetInHour)})
+	}
+	last24hCreatedAssetsBuf := make([]byte, vlq.MaxLen64)
+	last24hTxAssetsBuf := make([]byte, vlq.MaxLen64)
+
+	packVarint(last24hCreatedAssets, last24hCreatedAssetsBuf)
+	packVarint(last24hTxAssets, last24hTxAssetsBuf)
+
+	d.db.PutCF(d.wo, d.cfh[cfDefault], []byte("last24hCreatedAssets"), last24hCreatedAssetsBuf)
+	d.db.PutCF(d.wo, d.cfh[cfDefault], []byte("last24hTxAssets"), last24hTxAssetsBuf)
+
+	newAssetInHourCountsBuf, _ := json.Marshal(newAssetInHourCounts)
+	d.db.PutCF(d.wo, d.cfh[cfDefault], []byte("newAssetInHourCounts"), newAssetInHourCountsBuf)
+	reissueAssetInHourCountsBuf, _ := json.Marshal(newAssetInHourCounts)
+	d.db.PutCF(d.wo, d.cfh[cfDefault], []byte("reissueAssetInHourCounts"), reissueAssetInHourCountsBuf)
+	transferAssetInHourCountsBuf, _ := json.Marshal(newAssetInHourCounts)
+	d.db.PutCF(d.wo, d.cfh[cfDefault], []byte("transferAssetInHourCounts"), transferAssetInHourCountsBuf)
+	//glog.Info("End Calculate newAssetInHourCounts, reissueAssetInHourCounts, transferAssetInHourCounts")
+
+}
+
+func (d *RocksDB) GetBlockSpacing() (uint32, error) {
+	blockSpacingBytes, err := d.db.GetCF(d.ro, d.cfh[cfDefault], []byte("blockspacing"))
+	if err != nil {
+		return 0, err
+	}
+	blockSpacing := unpackUint(blockSpacingBytes.Data())
+	return blockSpacing, nil
+}
+
+func (d *RocksDB) GetNewAssetInHourCounts() ([][]int64, error) {
+	var newAssetInHourCounts [][]int64
+	newAssetInHourCountsBuf, err := d.db.GetCF(d.ro, d.cfh[cfDefault], []byte("newAssetInHourCounts"))
+
+	errMarsh := json.Unmarshal(newAssetInHourCountsBuf.Data(), &newAssetInHourCounts)
+	if errMarsh != nil {
+		return nil, errMarsh
+	}
+	return newAssetInHourCounts, err
+
+}
+
+func (d *RocksDB) GetReissueAssetInHourCounts() ([][]int64, error) {
+	var reissueAssetInHourCounts [][]int64
+	newAssetInHourCountsBuf, err := d.db.GetCF(d.ro, d.cfh[cfDefault], []byte("reissueAssetInHourCounts"))
+
+	errMarsh := json.Unmarshal(newAssetInHourCountsBuf.Data(), &reissueAssetInHourCounts)
+	if errMarsh != nil {
+		return nil, errMarsh
+	}
+	return reissueAssetInHourCounts, err
+
+}
+
+func (d *RocksDB) GetTransferAssetInHourCounts() ([][]int64, error) {
+	var transferAssetInHourCounts [][]int64
+	newAssetInHourCountsBuf, err := d.db.GetCF(d.ro, d.cfh[cfDefault], []byte("transferAssetInHourCounts"))
+
+	errMarsh := json.Unmarshal(newAssetInHourCountsBuf.Data(), &transferAssetInHourCounts)
+	if errMarsh != nil {
+		return nil, errMarsh
+	}
+	return transferAssetInHourCounts, err
+
+}
+
+func (d *RocksDB) GetCirculatingSupply() (*big.Int, error) {
+	circulatingSupplyBuf, err := d.db.GetCF(d.ro, d.cfh[cfDefault], []byte("circulatingSupply"))
+	if err != nil {
+		return nil, err
+	}
+	circulatingSupply, _ := unpackBigint(circulatingSupplyBuf.Data())
+	return &circulatingSupply, nil
+
+}
+
+func (d *RocksDB) GetLast24CreatedAssets() (int, error) {
+	last24hCreatedAssetsBuf, err := d.db.GetCF(d.ro, d.cfh[cfDefault], []byte("last24hCreatedAssets"))
+	if err != nil {
+		return 0, err
+	}
+	last24hCreatedAssets, _ := unpackVarint(last24hCreatedAssetsBuf.Data())
+	return last24hCreatedAssets, nil
+}
+
+func (d *RocksDB) GetLast24TxAssets() (int, error) {
+	last24hTxAssetsBuf, err := d.db.GetCF(d.ro, d.cfh[cfDefault], []byte("last24hTxAssets"))
+	if err != nil {
+		return 0, err
+	}
+	last24hCreatedAssets, _ := unpackVarint(last24hTxAssetsBuf.Data())
+	return last24hCreatedAssets, nil
+}
+
+func (d *RocksDB) GetAssets() []AssetInfo {
+	var assets []AssetInfo
+	it := d.db.NewIteratorCF(d.ro, d.cfh[cfAssets])
+	for it.SeekToLast(); it.Valid(); it.Next() {
+		//addrBalance, _ := unpackAddrBalance(it.Value().Data(), d.chainParser.PackedTxidLen(), 0)
+		var asset *AssetInfo
+		err := json.Unmarshal(it.Value().Data(), &asset)
+		if err != nil {
+			glog.Errorf("Error while Unmarshaling an asset: %v", asset)
+		}
+		assets = append(assets, *asset)
+	}
+	return assets
+}
+
+func (d *RocksDB) GetLatestAssets() []AssetInfo {
+	var assets []AssetInfo
+	it := d.db.NewIteratorCF(d.ro, d.cfh[cfAssets])
+	for it.SeekToLast(); it.Valid(); it.Prev() {
+		//addrBalance, _ := unpackAddrBalance(it.Value().Data(), d.chainParser.PackedTxidLen(), 0)
+		var asset *AssetInfo
+		if it.Value().Data() != nil {
+			err := json.Unmarshal(it.Value().Data(), &asset)
+			if err != nil {
+				glog.Errorf("Error while Unmarshaling an asset: %v", asset)
+			}
+			assets = append(assets, *asset)
+			if len(assets) == 5 {
+				break
+			}
+		}
+
+	}
+	return assets
 }

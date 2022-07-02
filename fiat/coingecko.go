@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	gecko "github.com/superoo7/go-gecko/v3"
+	geckoTypes "github.com/superoo7/go-gecko/v3/types"
 	"github.com/trezor/blockbook/db"
 )
 
@@ -133,4 +135,28 @@ func (cg *Coingecko) marketDataExists(timestamp *time.Time) (bool, error) {
 		return false, err
 	}
 	return len(data.MarketData.Prices) != 0, nil
+}
+
+func getCoinMarket() (*geckoTypes.CoinsMarketItem, *geckoTypes.CoinsIDMarketChart, error) {
+	cg := gecko.NewClient(nil)
+	// find specific coins
+	vsCurrency := "usd"
+	ids := []string{"ravencoin"}
+	perPage := 1
+	page := 1
+	sparkline := true
+	pcp := geckoTypes.PriceChangePercentageObject
+	priceChangePercentage := []string{pcp.PCP24h}
+	order := geckoTypes.OrderTypeObject.MarketCapDesc
+
+	market, err := cg.CoinsMarket(vsCurrency, ids, order, perPage, page, sparkline, priceChangePercentage)
+	if err != nil {
+		glog.Fatal(err)
+	}
+	m, err := cg.CoinsIDMarketChart("ravencoin", "usd", "1")
+	if err != nil {
+		glog.Fatal(err)
+	}
+	p := *market
+	return &(p)[0], m, err
 }

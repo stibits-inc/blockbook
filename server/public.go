@@ -172,6 +172,7 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 	serveMux.HandleFunc(path+"api/block-index/", s.jsonHandler(s.apiBlockIndex, apiDefault))
 	serveMux.HandleFunc(path+"api/tx-specific/", s.jsonHandler(s.apiTxSpecific, apiDefault))
 	serveMux.HandleFunc(path+"api/tx/", s.jsonHandler(s.apiTx, apiDefault))
+	serveMux.HandleFunc(path+"api/rpc/tx/", s.jsonHandler(s.apiBchainTx, apiDefault))
 	serveMux.HandleFunc(path+"api/address/", s.jsonHandler(s.apiAddress, apiDefault))
 	serveMux.HandleFunc(path+"api/xpub/", s.jsonHandler(s.apiXpub, apiDefault))
 	serveMux.HandleFunc(path+"api/utxo/", s.jsonHandler(s.apiUtxo, apiDefault))
@@ -180,6 +181,15 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 	serveMux.HandleFunc(path+"api/sendtx/", s.jsonHandler(s.apiSendTx, apiDefault))
 	serveMux.HandleFunc(path+"api/estimatefee/", s.jsonHandler(s.apiEstimateFee, apiDefault))
 	serveMux.HandleFunc(path+"api/balancehistory/", s.jsonHandler(s.apiBalanceHistory, apiDefault))
+
+	serveMux.HandleFunc(path+"api/dashboard", s.jsonHandler(s.apiDashboard, apiDefault))
+
+	serveMux.HandleFunc(path+"api/assets/overview", s.jsonHandler(s.apiAssetsOverview, apiDefault))
+
+	serveMux.HandleFunc(path+"api/assets/", s.jsonHandler(s.apiAsset, apiDefault))
+	serveMux.HandleFunc(path+"api/assets/recently", s.jsonHandler(s.apiAssetMovements, apiDefault))
+	serveMux.HandleFunc(path+"api/search", s.jsonHandler(s.apiSearch, apiDefault))
+
 	// v2 format
 	serveMux.HandleFunc(path+"api/v2/block-index/", s.jsonHandler(s.apiBlockIndex, apiV2))
 	serveMux.HandleFunc(path+"api/v2/tx-specific/", s.jsonHandler(s.apiTxSpecific, apiV2))
@@ -996,6 +1006,16 @@ func (s *PublicServer) apiTx(r *http.Request, apiVersion int) (interface{}, erro
 	return tx, err
 }
 
+func (s *PublicServer) apiBchainTx(r *http.Request, apiVersion int) (interface{}, error) {
+	var txid string
+	i := strings.LastIndexByte(r.URL.Path, '/')
+	if i > 0 {
+		txid = r.URL.Path[i+1:]
+	}
+
+	return s.chain.GetTransaction(txid)
+}
+
 func (s *PublicServer) apiTxSpecific(r *http.Request, apiVersion int) (interface{}, error) {
 	var txid string
 	i := strings.LastIndexByte(r.URL.Path, '/')
@@ -1166,6 +1186,15 @@ func (s *PublicServer) apiBlocks(r *http.Request, apiVersion int) (interface{}, 
 	return blocks, err
 }
 
+func (s *PublicServer) apiDashboard(r *http.Request, apiVersion int) (interface{}, error) {
+	market, err := s.api.GetDashboardData()
+	return market, err
+}
+
+func (s *PublicServer) apiAssetsOverview(r *http.Request, apiVersion int) (interface{}, error) {
+	return s.api.GetAssetsOverviewData()
+}
+
 func (s *PublicServer) apiAssets(r *http.Request, apiVersion int) (interface{}, error) {
 	var assets *bchain.Assets
 	var err error
@@ -1173,6 +1202,85 @@ func (s *PublicServer) apiAssets(r *http.Request, apiVersion int) (interface{}, 
 
 	assets, err = s.api.ListAssets()
 	return assets, err
+}
+
+func (s *PublicServer) apiAssetMovements(r *http.Request, apiVersion int) (interface{}, error) {
+
+	var txAssets *api.TxAssets
+	var err error
+	s.metrics.ExplorerViews.With(common.Labels{"action": "api-asset-txs"}).Inc()
+	if i := strings.LastIndexByte(r.URL.Path, '/'); i > 0 {
+		page, ec := strconv.Atoi(r.URL.Query().Get("page"))
+		if ec != nil {
+			page = 0
+		}
+		pageSize, ec := strconv.Atoi(r.URL.Query().Get("pageSize"))
+		if ec != nil {
+			pageSize = blocksInAPI
+		}
+
+		txAssets, err = s.api.GetAssetMovements(page, pageSize)
+	}
+	return txAssets, err
+}
+
+func (s *PublicServer) apiAsset(r *http.Request, apiVersion int) (interface{}, error) {
+	var assetParam string
+
+	i := strings.LastIndexByte(r.URL.Path, '/')
+	if i > 0 {
+		assetParam = r.URL.Path[i+1:]
+	}
+	return s.api.GetAsset(assetParam)
+
+}
+
+func (s *PublicServer) apiSearch(r *http.Request, apiVersion int) (interface{}, error) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	var tx *api.Tx
+	var address *api.Address
+	var block *api.Block
+	var asset *api.Asset
+	var err error
+	s.metrics.ExplorerViews.With(common.Labels{"action": "search"}).Inc()
+	if len(q) > 0 {
+		block, err = s.api.GetBlock(q, 0, 1)
+		if err == nil {
+			//http.Redirect(w, r, joinURL("api/block/", block.Hash), 302)
+			return &api.SearchResult{
+				RedirectTo: "/block/",
+				Result:     block,
+			}, nil
+		}
+		tx, err = s.api.GetTransaction(q, false, false)
+		if err == nil {
+			//http.Redirect(w, r, joinURL("api/tx/", tx.Txid), 302)
+			return &api.SearchResult{
+				RedirectTo: "/tx/",
+				Result:     tx,
+			}, nil
+		}
+		address, err = s.api.GetAddress(q, 0, 1, api.AccountDetailsBasic, &api.AddressFilter{Vout: api.AddressFilterVoutOff})
+		if err == nil {
+			//http.Redirect(w, r, joinURL("api/address/", address.AddrStr), 302)
+			return &api.SearchResult{
+				RedirectTo: "/address/",
+				Result:     address,
+			}, nil
+		}
+		asset, err = s.api.GetAsset(q)
+		if err == nil {
+			//http.Redirect(w, r, joinURL("api/address/", asset.Name), 302)
+			return &api.SearchResult{
+				RedirectTo: "/asset/",
+				Result:     asset,
+			}, nil
+		}
+	}
+	return &api.SearchResult{
+		RedirectTo: "No matching records found",
+		Result:     nil,
+	}, err
 }
 
 func (s *PublicServer) apiBlocksDetails(r *http.Request, apiVersion int) (interface{}, error) {

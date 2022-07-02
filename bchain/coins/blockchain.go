@@ -238,6 +238,14 @@ func (c *blockChainWithMetrics) ListAssets() (assets *bchain.Assets, err error) 
 	return c.b.ListAssets()
 }
 
+func (c *blockChainWithMetrics) GetMempoolInfo() (json.RawMessage, error) {
+	return c.b.GetMempoolInfo()
+}
+
+func (c *blockChainWithMetrics) GetMiningInfo() (*bchain.MiningInfo, error) {
+	return c.b.GetMiningInfo()
+}
+
 func (c *blockChainWithMetrics) GetBlockHash(height uint32) (v string, err error) {
 	defer func(s time.Time) { c.observeRPCLatency("GetBlockHash", s, err) }(time.Now())
 	return c.b.GetBlockHash(height)

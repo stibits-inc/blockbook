@@ -734,6 +734,8 @@ func initFiatRatesDownloader(db *db.RocksDB, configfile string) {
 		glog.Errorf("Error parsing config file %v, %v", configfile, err)
 		return
 	}
+	//index, err = db.NewRocksDB(*dbPath, *dbCache, *dbMaxOpenFiles, chain.GetChainParser(), metrics, chain)
+	db.RunScheduleCounter()
 
 	if config.FiatRates == "" || config.FiatRatesParams == "" {
 		glog.Infof("FiatRates config (%v) is empty, so the functionality is disabled.", configfile)

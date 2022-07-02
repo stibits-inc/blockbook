@@ -7,6 +7,7 @@ import (
 	"sort"
 	"time"
 
+	geckoTypes "github.com/superoo7/go-gecko/v3/types"
 	"github.com/trezor/blockbook/bchain"
 	"github.com/trezor/blockbook/bchain/coins/eth"
 	"github.com/trezor/blockbook/common"
@@ -186,8 +187,8 @@ type Tx struct {
 	Txid             string            `json:"txid"`
 	Version          int32             `json:"version,omitempty"`
 	Locktime         uint32            `json:"lockTime,omitempty"`
-	Vin              []Vin             `json:"vin"`
-	Vout             []Vout            `json:"vout"`
+	Vin              []Vin             `json:"vin,omitempty"`
+	Vout             []Vout            `json:"vout,omitempty"`
 	Blockhash        string            `json:"blockHash,omitempty"`
 	Blockheight      int               `json:"blockHeight"`
 	Confirmations    uint32            `json:"confirmations"`
@@ -202,6 +203,12 @@ type Tx struct {
 	CoinSpecificData json.RawMessage   `json:"coinSpecificData,omitempty"`
 	TokenTransfers   []TokenTransfer   `json:"tokenTransfers,omitempty"`
 	EthereumSpecific *EthereumSpecific `json:"ethereumSpecific,omitempty"`
+}
+
+type SearchResult struct {
+	RedirectTo string      `json:"redirectTo,omitempty"`
+	Result     interface{} `json:"result,omitempty"`
+	Error      error       `json:"error,omitempty"`
 }
 
 // FeeStats contains detailed block fee statistics
@@ -394,6 +401,44 @@ type BlocksDetails struct {
 	Blocks []BlockDetails `json:"blocks"`
 }
 
+type TxAssets struct {
+	Paging
+	TxAssets []db.AssetTransaction `json:"txs,omitempty"`
+}
+
+type MarketData struct {
+	ChangePercentage24h float32     `json:"changePercentage24h"`
+	Volume24h           float32     `json:"volume24h"`
+	MarketCap           float32     `json:"marketCap"`
+	CurrentPrice        float32     `json:"currentPrice"`
+	Prices              [][]float32 `json:"prices"`
+	BlockSpacing        int64       `json:"blockSpacing"`
+}
+
+type DashboardData struct {
+	LatestBlocks       []db.BlockInfo                 `json:"latestBlocks"`
+	LatestTransactions []Tx                           `json:"latestTransactions"`
+	MempoolInfo        json.RawMessage                `json:"mempoolInfo"`
+	MiningInfo         *bchain.MiningInfo             `json:"miningInfo"`
+	MarketData         *geckoTypes.CoinsMarketItem    `json:"marketData"`
+	MarketChart        *geckoTypes.CoinsIDMarketChart `json:"marketChart"`
+	BestBlockCount     uint32                         `json:"bestBlockCount"`
+	BlockSpacing       uint32                         `json:"blockSpacing"`
+	CirculatingSupply  *big.Int                       `json:"circulatingSupply"`
+}
+
+type AssetOverviewData struct {
+	Last24hCreatedAssets    int                   `json:"last24hCreatedAssets"`
+	Last24hTxdAssets        int                   `json:"last24hTxdAssets"`
+	CountNewAssetsType      [][]int64             `json:"countNewAssetsType"`
+	CountTransferAssetsType [][]int64             `json:"countTransferAssetsType"`
+	CountReissueAssetsType  [][]int64             `json:"countReissueAssetsType"`
+	AdminAssetsCount        int                   `json:"adminAssetsCount"`
+	NonAdminAssetsCount     int                   `json:"nonAdminAssetsCount"`
+	RecentlyCreatedAssets   []db.AssetInfo        `json:"recentlyCreatedAssets"`
+	RecentAssetMovements    []db.AssetTransaction `json:"recentAssetMovements"`
+}
+
 // BlockInfo contains extended block header data and a list of block txids
 type BlockInfo struct {
 	Hash          string            `json:"hash"`
@@ -465,4 +510,24 @@ type MempoolTxids struct {
 	Paging
 	Mempool     []MempoolTxid `json:"mempool"`
 	MempoolSize int           `json:"mempoolSize"`
+}
+
+type Asset struct {
+	Name           string                `json:"name"`
+	Amount         float64               `json:"amount"`
+	Units          int64                 `json:"units,omitempty"`
+	Reissuable     int                   `json:"reissuable,omitempty"`
+	HasIpfs        int                   `json:"hasIpfs,omitempty"`
+	Height         uint32                `json:"height,"`
+	Message        string                `json:"message,omitempty"`
+	IpfsHash       string                `json:"ipfsHash,omitempty"`
+	GenesisTxid    string                `json:"genesisTxid,omitempty"`
+	Time           int64                 `json:"time,omitempty"`
+	VerifierString string                `json:"verifier_string,omitempty"`
+	QualifierType  string                `json:"qualifier_type,omitempty"`
+	Address        string                `json:"address,omitempty"`
+	RestrictedName string                `json:"restricted_name,omitempty"`
+	RestrictedType string                `json:"restricted_type,omitempty"`
+	Holders        []db.Holder           `json:"holders,omitempty,omitempty"`
+	Txs            []db.AssetTransaction `json:"transactions,omitempty"`
 }

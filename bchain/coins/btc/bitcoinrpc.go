@@ -835,6 +835,54 @@ func (b *BitcoinRPC) getRawTransaction(txid string) (json.RawMessage, error) {
 	return res.Result, nil
 }
 
+type ResGetMiningInfo struct {
+	Error  *bchain.RPCError  `json:"error"`
+	Result bchain.MiningInfo `json:"result"`
+}
+
+func (b *BitcoinRPC) GetMiningInfo() (*bchain.MiningInfo, error) {
+	glog.V(1).Info("rpc: getmininginfo ")
+
+	res := ResGetMiningInfo{}
+	req := CmdGetBlockChainInfo{Method: "getmininginfo"}
+
+	err := b.Call(&req, &res)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &bchain.MiningInfo{
+		Blocks:             res.Result.Blocks,
+		Currentblockweight: res.Result.Currentblockweight,
+		Difficulty:         res.Result.Difficulty,
+		Currentblocktx:     res.Result.Currentblocktx,
+		Networkhashps:      res.Result.Networkhashps,
+		Hashespersec:       res.Result.Hashespersec,
+		Pooledtx:           res.Result.Pooledtx,
+	}, nil
+}
+
+type ResGetMempoolInfo struct {
+	Error  *bchain.RPCError `json:"error"`
+	Result json.RawMessage  `json:"result"`
+}
+
+func (b *BitcoinRPC) GetMempoolInfo() (json.RawMessage, error) {
+	glog.V(1).Info("rpc: getmempoolinfo ")
+
+	res := ResGetMempoolInfo{}
+	req := CmdGetBlockChainInfo{Method: "getmempoolinfo"}
+
+	err := b.Call(&req, &res)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return res.Result, nil
+}
+
 // EstimateSmartFee returns fee estimation
 func (b *BitcoinRPC) EstimateSmartFee(blocks int, conservative bool) (big.Int, error) {
 	// use EstimateFee if EstimateSmartFee is not supported

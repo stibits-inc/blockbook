@@ -403,6 +403,14 @@ func (b *EthereumRPC) GetBestBlockHeight() (uint32, error) {
 	return uint32(h.Number.Uint64()), nil
 }
 
+func (b *EthereumRPC) GetMiningInfo() (*bchain.MiningInfo, error) {
+	return nil, nil
+}
+
+func (b *EthereumRPC) GetMempoolInfo() (json.RawMessage, error) {
+	return nil, nil
+}
+
 // GetBlockHash returns hash of block in best-block-chain at given height
 func (b *EthereumRPC) GetBlockHash(height uint32) (string, error) {
 	var n big.Int

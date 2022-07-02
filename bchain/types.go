@@ -64,10 +64,11 @@ type Vin struct {
 // ScriptPubKey contains data about output script
 type ScriptPubKey struct {
 	// Asm       string   `json:"asm"`
-	Hex string `json:"hex,omitempty"`
-	// Type      string   `json:"type"`
-	Addresses []string `json:"addresses"`
-	Asset     *Asset   `json:"asset"`
+	Hex       string     `json:"hex,omitempty"`
+	Type      string     `json:"type"`
+	Addresses []string   `json:"addresses"`
+	Asset     *Asset     `json:"asset"`
+	AssetData *AssetData `json:"asset_data"`
 }
 
 // Vout contains data about tx output
@@ -276,12 +277,41 @@ type XpubDescriptor struct {
 }
 
 type Asset struct {
-	Name   string  `json:"name"`
-	Amount float32 `json:"amount"`
+	Name       string  `json:"name"`
+	Amount     float64 `json:"amount"`
+	Units      int64   `json:"units"`
+	Reissuable int     `json:"reissuable"`
+	HasIpfs    int     `json:"has_ipfs"`
+	IpfsHash   string  `json:"ipfs_hash"`
+	Message    string  `json:"message"`
+}
+
+//Restricted Asset
+type AssetData struct {
+	Name           string  `json:"asset_name"`
+	Amount         float64 `json:"amount"`
+	Units          int64   `json:"units"`
+	Reissuable     int     `json:"reissuable"`
+	HasIpfs        int     `json:"has_ipfs"`
+	IpfsHash       string  `json:"ipfs_hash"`
+	VerifierString string  `json:"verifier_string"`
+	QualifierType  string  `json:"qualifier_type"`
+	Address        string  `json:"address"`
+	RestrictedName string  `json:"restricted_name"`
+	RestrictedType string  `json:"restricted_type"`
 }
 
 type Assets struct {
 	Assets []Asset `json:"assets"`
+}
+type MiningInfo struct {
+	Blocks             uint32  `json:"blocks"`
+	Currentblockweight uint32  `json:"currentblockweight"`
+	Currentblocktx     int     `json:"currentblocktx"`
+	Difficulty         float32 `json:"difficulty"`
+	Networkhashps      float32 `json:"networkhashps"`
+	Hashespersec       float32 `json:"hashespersec"`
+	Pooledtx           float32 `json:"pooledtx"`
 }
 
 // MempoolTxidEntries is array of MempoolTxidEntry
@@ -320,6 +350,8 @@ type BlockChain interface {
 	GetBestBlockHash() (string, error)
 	GetBestBlockHeight() (uint32, error)
 	ListAssets() (*Assets, error)
+	GetMiningInfo() (*MiningInfo, error)
+	GetMempoolInfo() (json.RawMessage, error)
 	GetBlockHash(height uint32) (string, error)
 	GetBlockHeader(hash string) (*BlockHeader, error)
 	GetBlock(hash string, height uint32) (*Block, error)
@@ -334,6 +366,7 @@ type BlockChain interface {
 	EstimateFee(blocks int) (big.Int, error)
 	SendRawTransaction(tx string) (string, error)
 	GetMempoolEntry(txid string) (*MempoolEntry, error)
+
 	// parser
 	GetChainParser() BlockChainParser
 	// EthereumType specific

@@ -9,7 +9,7 @@
     "backend_rpc": 8059,
     "backend_message_queue": 38359,
     "blockbook_internal": 9059,
-    "blockbook_public": 9159
+    "blockbook_public": 3001
   },
   "ipc": {
     "rpc_url_template": "http://127.0.0.1:{{.Ports.BackendRPC}}",
@@ -22,10 +22,10 @@
     "package_name": "backend-ravencoin",
     "package_revision": "satoshilabs-1",
     "system_user": "ravencoin",
-    "version": "4.2.1.0",
-    "binary_url": "https://github.com/RavenProject/Ravencoin/releases/download/v4.2.1/raven-4.2.1.0-x86_64-linux-gnu.tar.gz",
+    "version": "4.3.2.1",
+    "binary_url": "https://github.com/RavenProject/Ravencoin/releases/download/v4.3.2.1/raven-4.3.2.1-x86_64-linux-gnu.zip",
     "verification_type": "sha256",
-    "verification_source": "5a86f806e2444c6e6d612fd315f3a1369521fe50863617d5f52c3b1c1e70af76",
+    "verification_source": "d57192a656e097d4442a102b525a2e730c6aec2949cd67667b61cf9dfbc5190e",
     "extract_command": "tar -C backend --strip 1 -xf",
     "exclude_files": [
       "bin/raven-qt"

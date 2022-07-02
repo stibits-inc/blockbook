@@ -187,7 +187,8 @@ func (b *BulkConnect) connectBlockBitcoinType(block *bchain.Block, storeBlockTxs
 			go b.parallelStoreBalances(storeBalancesChan, false)
 		}
 	}
-	block, err := b.d.processTxsRavencoinType(block)
+	wb := gorocksdb.NewWriteBatch()
+	block, err := b.d.processTxsRavencoinType(wb, block)
 	if err != nil {
 		return err
 	}
@@ -210,7 +211,6 @@ func (b *BulkConnect) connectBlockBitcoinType(block *bchain.Block, storeBlockTxs
 	// open WriteBatch only if going to write
 	if sa || b.bulkAddressesCount > maxBulkAddresses || storeBlockTxs {
 		start := time.Now()
-		wb := gorocksdb.NewWriteBatch()
 		defer wb.Destroy()
 		bac := b.bulkAddressesCount
 		if sa || b.bulkAddressesCount > maxBulkAddresses {

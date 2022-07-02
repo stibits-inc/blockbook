@@ -15,6 +15,8 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/juju/errors"
+	gecko "github.com/superoo7/go-gecko/v3"
+	geckoTypes "github.com/superoo7/go-gecko/v3/types"
 	"github.com/trezor/blockbook/bchain"
 	"github.com/trezor/blockbook/bchain/coins/eth"
 	"github.com/trezor/blockbook/common"
@@ -1428,6 +1430,33 @@ func (w *Worker) GetBlocks(page int, blocksOnPage int) (*Blocks, error) {
 	return r, nil
 }
 
+func (w *Worker) GetAssetsOverviewData() (*AssetOverviewData, error) {
+	last24hCreatedAssets, err := w.db.GetLast24CreatedAssets()
+	last24TxAssets, err := w.db.GetLast24TxAssets()
+	countNewAssetType, err := w.db.GetNewAssetInHourCounts()
+	countReissueAssetType, err := w.db.GetReissueAssetInHourCounts()
+	countTransferAssetType, err := w.db.GetTransferAssetInHourCounts()
+	adminAssetsCount, err := w.db.GetAdminAssetsCount("adminAssetsCount")
+	nonAdminAssetsCount, err := w.db.GetAdminAssetsCount("nonAdminAssetsCount")
+	assetsMovements, err := w.GetAssetMovements(0, 5)
+	var latestAssetMovements []db.AssetTransaction
+	if assetsMovements != nil {
+		latestAssetMovements = assetsMovements.TxAssets
+	}
+	last24hCreatedAssetsList := w.db.GetLatestAssets()
+	return &AssetOverviewData{
+		Last24hCreatedAssets:    last24hCreatedAssets,
+		Last24hTxdAssets:        last24TxAssets,
+		CountNewAssetsType:      countNewAssetType,
+		CountTransferAssetsType: countTransferAssetType,
+		CountReissueAssetsType:  countReissueAssetType,
+		AdminAssetsCount:        adminAssetsCount,
+		NonAdminAssetsCount:     nonAdminAssetsCount,
+		RecentlyCreatedAssets:   last24hCreatedAssetsList,
+		RecentAssetMovements:    latestAssetMovements,
+	}, err
+}
+
 func (w *Worker) ListAssets() (*bchain.Assets, error) {
 	start := time.Now()
 
@@ -1439,6 +1468,162 @@ func (w *Worker) ListAssets() (*bchain.Assets, error) {
 
 	glog.Info("GetBlocks page ", ", ", time.Since(start))
 	return assets, nil
+}
+
+func (w *Worker) GetAsset(assetName string) (*Asset, error) {
+
+	ai, err := w.db.GetAsset(assetName)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &Asset{
+		Name:           ai.Name,
+		Amount:         ai.Amount,
+		Units:          ai.Units,
+		Reissuable:     ai.Reissuable,
+		HasIpfs:        ai.HasIpfs,
+		Height:         ai.Height,
+		Message:        ai.Message,
+		IpfsHash:       ai.IpfsHash,
+		GenesisTxid:    ai.GenesisTxid,
+		Time:           ai.Time,
+		VerifierString: ai.VerifierString,
+		QualifierType:  ai.QualifierType,
+		Address:        ai.Address,
+		RestrictedName: ai.RestrictedName,
+		RestrictedType: ai.RestrictedType,
+		Holders:        ai.Holders,
+	}
+	b, err := w.db.GetLastAssetTxIndex()
+	for i := b; i > 0; i-- {
+		at, err := w.db.GetAssetTx(uint32(i))
+		if err != nil {
+			return nil, err
+		}
+		if at == nil {
+			break
+		}
+		if at.Name == assetName {
+			response.Txs = append(response.Txs, *at)
+		}
+	}
+	return response, nil
+}
+
+func (w *Worker) GetAssetMovements(page int, blocksOnPage int) (*TxAssets, error) {
+	start := time.Now()
+	page--
+	if page < 0 {
+		page = 0
+	}
+	b, err := w.db.GetLastAssetTxIndex()
+	lastIndex := int(b)
+	if err != nil {
+		return nil, errors.Annotatef(err, "GetBestBlock")
+	}
+	pg, from, to, page := computePaging(lastIndex, page, blocksOnPage)
+	r := &TxAssets{Paging: pg}
+	r.TxAssets = make([]db.AssetTransaction, to-from)
+	for i := from; i < to; i++ {
+		at, err := w.db.GetAssetTx(uint32(lastIndex - i))
+		if err != nil {
+			return nil, err
+		}
+		if at == nil {
+			r.TxAssets = r.TxAssets[:i-1]
+			break
+		}
+		r.TxAssets[i-from] = *at
+	}
+	glog.Info("GetTxAssets page ", page, ", ", time.Since(start))
+	return r, nil
+}
+
+func (w *Worker) GetCoinMarket() (*geckoTypes.CoinsMarketItem, *geckoTypes.CoinsIDMarketChart, error) {
+	cg := gecko.NewClient(nil)
+	// find specific coins
+	vsCurrency := "usd"
+	ids := []string{"ravencoin"}
+	perPage := 1
+	page := 1
+	sparkline := true
+	pcp := geckoTypes.PriceChangePercentageObject
+	priceChangePercentage := []string{pcp.PCP24h}
+	order := geckoTypes.OrderTypeObject.MarketCapDesc
+	var marketItem *geckoTypes.CoinsMarketItem
+	market, err := cg.CoinsMarket(vsCurrency, ids, order, perPage, page, sparkline, priceChangePercentage)
+	if err != nil {
+		marketItem, err = w.db.GetMarket()
+	} else {
+		p := *market
+		marketItem = &(p)[0]
+	}
+	marketChart, err := cg.CoinsIDMarketChart("ravencoin", "usd", "1")
+	if err != nil {
+		marketChart, err = w.db.GetMarketChart()
+	}
+	return marketItem, marketChart, err
+}
+
+func (w *Worker) GetDashboardData() (*DashboardData, error) {
+	//var dashboardData *DashboardData
+	blockSpacing, err := w.db.GetBlockSpacing()
+	bestHeight, _, err := w.db.GetBestBlock()
+	circulatingSupply, err := w.db.GetCirculatingSupply()
+	if err != nil {
+		glog.Infof("Could not get block spacing: %v", err)
+	}
+	coinMarket, coinMarketChart, dataErr := w.GetCoinMarket()
+	if dataErr != nil {
+		glog.Infof("Could not get coinMarketChart, coinMarket: %v", dataErr)
+	}
+	miningInfo, _ := w.chain.GetMiningInfo()
+	mempoolInfo, _ := w.chain.GetMempoolInfo()
+	var latestBlocks []db.BlockInfo
+	var latestTxs []Tx
+	for i := bestHeight; i >= bestHeight-5; i-- {
+		bi, err := w.db.GetBlockInfo(i)
+		if err == nil {
+			latestBlocks = append(latestBlocks, *bi)
+		}
+	}
+	for _, bi := range latestBlocks {
+		block, err := w.chain.GetBlockFull(bi.Hash)
+		if err == nil {
+			var valOutSat big.Int
+			for _, tx := range block.Txs {
+				for _, vout := range tx.Vout {
+					valOutSat.Add(&valOutSat, &vout.ValueSat)
+				}
+				latestTxs = append(latestTxs, Tx{
+					Txid:          tx.Txid,
+					Blocktime:     bi.Time,
+					ValueOutSat:   (*Amount)(&valOutSat),
+					Blockheight:   int(bi.Height),
+					Confirmations: bestHeight - bi.Height,
+				})
+			}
+			if len(latestTxs) == 5 {
+				break
+			}
+		}
+		if len(latestTxs) == 5 {
+			break
+		}
+
+	}
+	return &DashboardData{
+		LatestBlocks:       latestBlocks,
+		LatestTransactions: latestTxs,
+		BlockSpacing:       blockSpacing,
+		MarketData:         coinMarket,
+		MarketChart:        coinMarketChart,
+		MiningInfo:         miningInfo,
+		MempoolInfo:        mempoolInfo,
+		BestBlockCount:     bestHeight,
+		CirculatingSupply:  circulatingSupply,
+	}, nil
 }
 
 func (w *Worker) GetBlocksDetails(page int, blocksOnPage int) (*BlocksDetails, error) {

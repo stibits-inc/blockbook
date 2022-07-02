@@ -153,6 +153,13 @@ func (c *fakeBlockChain) ListAssets() (v *bchain.Assets, err error) {
 	return nil, bchain.ErrBlockNotFound
 }
 
+func (c *fakeBlockChain) GetMiningInfo() (*bchain.MiningInfo, error) {
+	return nil, nil
+}
+
+func (c *fakeBlockChain) GetMempoolInfo() (json.RawMessage, error) {
+	return nil, nil
+}
 func (c *fakeBlockChain) GetBlockInfo(hash string) (v *bchain.BlockInfo, err error) {
 	b1 := GetTestBitcoinTypeBlock1(c.Parser)
 	if hash == b1.BlockHeader.Hash {
