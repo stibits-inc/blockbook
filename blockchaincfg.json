@@ -1,0 +1,19 @@
+{
+    "coin_name": "Ravencoin Testnet",
+    "coin_shortcut": "tRVN",
+    "coin_label": "Ravencoin Testnet",
+    "rpc_url": "http://18.118.34.50:18059",
+    "rpc_user": "bitcoin",
+    "rpc_pass": "aqzsed23++",
+    "rpc_timeout": 25,
+    "parse": true,
+    "message_queue_binding": "tcp://18.118.34.50:48359",
+    "subversion": "",
+    "address_format": "",
+    "xpub_magic": 70617039,
+    "slip44": 175,
+
+    "mempool_workers": 8,
+    "mempool_sub_workers": 2,
+    "block_addresses_to_keep": 300
+}

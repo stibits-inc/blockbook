@@ -812,3 +812,7 @@ func (b *EthereumRPC) EthereumTypeGetGasPrice() (string, error) {
 func (b *EthereumRPC) GetChainParser() bchain.BlockChainParser {
 	return b.Parser
 }
+
+func (b *EthereumRPC) GetAssetAddresses(name string) (map[string]float64, error) {
+	return nil, nil
+}

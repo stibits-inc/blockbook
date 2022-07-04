@@ -390,3 +390,8 @@ func (c *mempoolWithMetrics) GetAllEntries() (v bchain.MempoolTxidEntries) {
 func (c *mempoolWithMetrics) GetTransactionTime(txid string) uint32 {
 	return c.mempool.GetTransactionTime(txid)
 }
+
+func (c *blockChainWithMetrics) GetAssetAddresses(name string) (v map[string]float64, err error) {
+	defer func(s time.Time) { c.observeRPCLatency("GetTransaction", s, err) }(time.Now())
+	return c.b.GetAssetAddresses(name)
+}

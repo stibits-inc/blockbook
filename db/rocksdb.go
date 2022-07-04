@@ -115,6 +115,7 @@ const (
 	cfTxAddresses
 	// RavencoinType
 	cfAssets
+	//cfAssetHolders
 	cfTxAssets
 	cfAssetTxs30d
 	// EthereumType
@@ -1259,22 +1260,24 @@ type BlockInfo struct {
 }
 
 type AssetInfo struct {
-	Name           string   `json:"name"`
-	Amount         float64  `json:"amount"`
-	Units          int64    `json:"units,omitempty"`
-	Reissuable     int      `json:"reissuable,omitempty"`
-	HasIpfs        int      `json:"hasIpfs,omitempty"`
-	Height         uint32   `json:"height,"`
-	Message        string   `json:"message,omitempty"`
-	IpfsHash       string   `json:"ipfsHash,omitempty"`
-	GenesisTxid    string   `json:"genesisTxid,omitempty"`
-	Time           int64    `json:"time,omitempty"`
-	VerifierString string   `json:"verifier_string,omitempty"`
-	QualifierType  string   `json:"qualifier_type,omitempty"`
-	Address        string   `json:"address,omitempty"`
-	RestrictedName string   `json:"restricted_name,omitempty"`
-	RestrictedType string   `json:"restricted_type,omitempty"`
-	Holders        []Holder `json:"holders,omitempty,omitempty"`
+	Name        string `json:"name"`
+	Units       int64  `json:"units,omitempty"`
+	Reissuable  int    `json:"reissuable,omitempty"`
+	HasIpfs     int    `json:"hasIpfs,omitempty"`
+	Height      uint32 `json:"height,"`
+	IpfsHash    string `json:"ipfsHash,omitempty"`
+	GenesisTxid string `json:"genesisTxid,omitempty"`
+	Time        int64  `json:"time,omitempty"`
+
+	//Holders int    `json:"holders,omitempty"`
+	Message string `json:"message,omitempty"`
+
+	//VerifierString string  `json:"verifier_string,omitempty"`
+	//QualifierType  string  `json:"qualifier_type,omitempty"`
+	//Address        string  `json:"address,omitempty"`
+	//RestrictedName string  `json:"restricted_name,omitempty"`
+	//RestrictedType string  `json:"restricted_type,omitempty"`
+
 }
 
 type Holder struct {
@@ -2381,7 +2384,7 @@ func packFloat64(f float64, buffer []byte) int {
 func (d *RocksDB) SpendAssetInTx(asset *bchain.Asset, addresses []string, height uint32, txid string, time int64) error {
 	address := strings.Join(addresses, ",")
 	var err error
-	err = d.updateAsset(&AssetInfo{Name: asset.Name}, address, -asset.Amount)
+	//err = d.updateAsset(&AssetInfo{Name: asset.Name}, address, -asset.Amount)
 	err = d.saveCountByType("transfer_asset", truncate(time))
 	err = d.SpendOrReceiveAssetInTx(asset.Name, -asset.Amount, address, height, txid, time)
 	return err
@@ -2392,8 +2395,8 @@ func (d *RocksDB) ReceiveAssetFromTx(asset *bchain.Asset, addresses []string, Ty
 	switch Type {
 	case "new_asset":
 		assetInfo := &AssetInfo{
-			Name:        asset.Name,
-			Amount:      asset.Amount,
+			Name: asset.Name,
+			//Amount:      asset.Amount,
 			Units:       asset.Units,
 			Reissuable:  asset.Reissuable,
 			HasIpfs:     asset.HasIpfs,
@@ -2401,11 +2404,11 @@ func (d *RocksDB) ReceiveAssetFromTx(asset *bchain.Asset, addresses []string, Ty
 			IpfsHash:    asset.IpfsHash,
 			GenesisTxid: txid,
 			Time:        time,
-			Holders:     []Holder{Holder{Address: address, Amount: asset.Amount}},
 		}
+		err := d.writeAsset(assetInfo)
 		d.SpendOrReceiveAssetInTx(asset.Name, -asset.Amount, "New Asset", height, txid, time)
 		d.SpendOrReceiveAssetInTx(asset.Name, asset.Amount, address, height, txid, time)
-		err := d.writeAsset(assetInfo)
+		//assetInfo.Holders = d.updateAssetHolders(asset.Name, address, asset.Amount, 0)
 		d.saveCountByType(Type, truncate(time))
 
 		if strings.HasSuffix(asset.Name, "!") {
@@ -2425,18 +2428,17 @@ func (d *RocksDB) ReceiveAssetFromTx(asset *bchain.Asset, addresses []string, Ty
 		}
 		d.SpendOrReceiveAssetInTx(asset.Name, -asset.Amount, "Reissue Asset", height, txid, time)
 		d.SpendOrReceiveAssetInTx(asset.Name, asset.Amount, address, height, txid, time)
-		err := d.updateAsset(assetInfo, address, asset.Amount)
+		err := d.writeAsset(assetInfo)
 		d.saveCountByType(Type, truncate(time))
 		return err
 	case "transfer_asset":
-		d.updateAsset(&AssetInfo{Name: asset.Name}, address, asset.Amount)
+		//d.updateAsset(&AssetInfo{Name: asset.Name}, address, asset.Amount)
 		return d.SpendOrReceiveAssetInTx(asset.Name, asset.Amount, address, height, txid, time)
 
 	default: //nullassetdata
 		return nil
 
 	}
-
 }
 
 func (d *RocksDB) SpendOrReceiveAssetInTx(Name string, amount float64, address string, height uint32, txid string, time int64) (err error) {
@@ -2450,14 +2452,14 @@ func (d *RocksDB) SpendOrReceiveAssetInTx(Name string, amount float64, address s
 	})
 }
 
-func find(sh []Holder, exist func(Holder) bool) (holders *Holder, index int) {
+/*func find(sh []Holder, exist func(Holder) bool) (holders *Holder, index int) {
 	for i, h := range sh {
 		if exist(h) {
 			return &h, i
 		}
 	}
 	return nil, -1
-}
+}*/
 
 func (d *RocksDB) IncrementAdminAssets(keyName string) {
 	adminAssetsBuf, err := d.db.GetCF(d.ro, d.cfh[cfDefault], []byte(keyName))
@@ -2486,17 +2488,18 @@ func (d *RocksDB) GetAdminAssetsCount(keyName string) (int, error) {
 }
 
 func (d *RocksDB) writeAsset(ai *AssetInfo) error {
+	fmt.Printf("Writing asset %v", ai.Name)
+
 	key := []byte(ai.Name)
 	val, err := json.Marshal(ai)
-	if err != nil {
+	if err != nil || val == nil {
 		return err
 	}
-	d.db.PutCF(d.wo, d.cfh[cfAssets], key, val)
+	return d.db.PutCF(d.wo, d.cfh[cfAssets], key, val)
 
-	return nil
 }
 
-func (d *RocksDB) updateAsset(ai *AssetInfo, address string, amount float64) error {
+/*func (d *RocksDB) updateAsset(ai *AssetInfo, address string, amount float64) error {
 	assetInfo, err := d.GetAsset(ai.Name)
 	if err != nil {
 		return err
@@ -2516,26 +2519,65 @@ func (d *RocksDB) updateAsset(ai *AssetInfo, address string, amount float64) err
 		}
 	}
 
-	holder, index := find(assetInfo.Holders, func(holder Holder) bool { return holder.Address == address })
-	if index != -1 {
-		holder.Amount = holder.Amount + amount
-		assetInfo.Holders[index] = *holder
-	} else {
-		assetInfo.Holders = append(assetInfo.Holders, Holder{Address: address, Amount: amount})
-	}
+
+
 	return d.writeAsset(assetInfo)
 
-}
+}*/
+
+/*func (d *RocksDB) updateAssetHolders(name string, address string, amount float64, holders int) int {
+	alreadyExist := false
+	for i := 1; i <= holders-1; i++ {
+		assetHolder, _ := d.db.GetCF(d.ro, d.cfh[cfAssetHolders], []byte(fmt.Sprint(name, i)))
+		var holder *Holder
+		if assetHolder.Data() != nil {
+			json.Unmarshal(assetHolder.Data(), &holder)
+			if holder.Address == address {
+				holder.Amount = holder.Amount + amount
+				buf, _ := json.Marshal(holder)
+				d.db.PutCF(d.wo, d.cfh[cfAssetHolders], []byte(fmt.Sprint(name, holders)), buf)
+				alreadyExist = true
+			}
+		}
+	}
+	if !alreadyExist {
+		holders++
+		buf, _ := json.Marshal(Holder{Address: address, Amount: amount})
+		d.db.PutCF(d.wo, d.cfh[cfAssetHolders], []byte(fmt.Sprint(name, holders)), buf)
+	}
+	return holders
+}*/
+
+/*func (d *RocksDB) GetAssetHolders(name string, holders int) []Holder {
+	var holdersList []Holder
+	for i := 1; i <= holders; i++ {
+		var holder *Holder
+		assetHolder, _ := d.db.GetCF(d.ro, d.cfh[cfAssetHolders], []byte(fmt.Sprint(name, i)))
+		if assetHolder.Data() != nil {
+			json.Unmarshal(assetHolder.Data(), holder)
+			holdersList = append(holdersList, *holder)
+		}
+	}
+	return holdersList
+
+}*/
 
 func (d *RocksDB) GetAsset(name string) (*AssetInfo, error) {
 
 	key := []byte(name)
 	assetBuf, err := d.db.GetCF(d.ro, d.cfh[cfAssets], key)
+
 	var assetInfo *AssetInfo
 	if err != nil {
 		return nil, err
 	}
-	json.Unmarshal(assetBuf.Data(), &assetInfo)
+	if assetBuf.Data() == nil {
+		fmt.Printf("Asset Not Found %v", name)
+	}
+	err = json.Unmarshal(assetBuf.Data(), &assetInfo)
+	if err != nil {
+		return nil, err
+	}
 	return assetInfo, nil
 }
 
@@ -2882,4 +2924,85 @@ func (d *RocksDB) GetLatestAssets() []AssetInfo {
 
 	}
 	return assets
+}
+
+func (d *RocksDB) packAssetInfo(asset *AssetInfo) ([]byte, error) {
+	packed := make([]byte, 0, 32)
+	varBuf := make([]byte, vlq.MaxLen32)
+	a, err := hex.DecodeString(asset.Name)
+	if err != nil {
+		return nil, err
+	}
+	pl := 16
+	if len(a) != pl {
+		glog.Warning("Non standard asset name ", asset.Name)
+		if len(a) > pl {
+			a = a[:pl]
+		} else {
+			a = append(a, make([]byte, pl-len(a))...)
+		}
+	}
+	packed = append(packed, a...)
+	packed = append(packed, packUint(uint32(asset.Units))...)
+	l := packVarint(asset.Reissuable, varBuf)
+	packed = append(packed, varBuf[:l]...)
+	l = packVarint(asset.HasIpfs, varBuf)
+	packed = append(packed, varBuf[:l]...)
+	packed = append(packed, packUint(asset.Height)...)
+
+	ipfs_hash, err := hex.DecodeString(asset.Name)
+	if err != nil {
+		return nil, err
+	}
+	pl = 23
+	if len(ipfs_hash) != pl {
+		glog.Warning("Non standard ipfs hash ", asset.IpfsHash)
+		if len(ipfs_hash) > pl {
+			ipfs_hash = ipfs_hash[:pl]
+		} else {
+			ipfs_hash = append(ipfs_hash, make([]byte, pl-len(ipfs_hash))...)
+		}
+	}
+	packed = append(packed, ipfs_hash...)
+	gt, err := d.chainParser.PackBlockHash(asset.GenesisTxid)
+	pl = d.chainParser.PackedTxidLen()
+	if len(gt) != pl {
+		glog.Warning("Non standard asset name ", asset.Name)
+		if len(gt) > pl {
+			gt = gt[:pl]
+		} else {
+			gt = append(gt, make([]byte, pl-len(gt))...)
+		}
+	}
+	packed = append(packed, gt...)
+	packed = append(packed, packUint(uint32(asset.Time))...)
+	return packed, nil
+
+}
+
+func (d *RocksDB) unpackAssetInfo(buf []byte) (*AssetInfo, error) {
+	pl := 16
+	// asset namt bytes + block height bytes + time bytes
+	if len(buf) < pl+4+4 {
+		return nil, nil
+	}
+
+	name := hex.EncodeToString(buf[:pl])
+	units := unpackUint(buf[pl:])
+	reissuable, l := unpackVarint(buf[pl+4:])
+	hasIpfs, l := unpackVarint(buf[pl+4+l:])
+	height := unpackUint(buf[pl+4+2*l:])
+	ipfsHash := hex.EncodeToString(buf[pl+4+2*l+4:])
+	genesisTxid := hex.EncodeToString(buf[pl+4+2*l+4+23:])
+	t := unpackUint(buf[pl+4+2*l+4+23+32:])
+	return &AssetInfo{
+		Name:        name,
+		Units:       int64(units),
+		Reissuable:  reissuable,
+		HasIpfs:     hasIpfs,
+		Height:      height,
+		IpfsHash:    ipfsHash,
+		GenesisTxid: genesisTxid,
+		Time:        int64(t),
+	}, nil
 }

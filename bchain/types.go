@@ -360,6 +360,7 @@ type BlockChain interface {
 	GetBlockFullDetails(hash string) (*BlockFullDetails, error)
 	GetMempoolTransactions() ([]string, error)
 	GetTransaction(txid string) (*Tx, error)
+	GetAssetAddresses(name string) (map[string]float64, error)
 	GetTransactionForMempool(txid string) (*Tx, error)
 	GetTransactionSpecific(tx *Tx) (json.RawMessage, error)
 	EstimateSmartFee(blocks int, conservative bool) (big.Int, error)

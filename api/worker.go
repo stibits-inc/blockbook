@@ -1478,23 +1478,29 @@ func (w *Worker) GetAsset(assetName string) (*Asset, error) {
 	}
 
 	response := &Asset{
-		Name:           ai.Name,
-		Amount:         ai.Amount,
-		Units:          ai.Units,
-		Reissuable:     ai.Reissuable,
-		HasIpfs:        ai.HasIpfs,
-		Height:         ai.Height,
-		Message:        ai.Message,
-		IpfsHash:       ai.IpfsHash,
-		GenesisTxid:    ai.GenesisTxid,
-		Time:           ai.Time,
-		VerifierString: ai.VerifierString,
-		QualifierType:  ai.QualifierType,
-		Address:        ai.Address,
-		RestrictedName: ai.RestrictedName,
-		RestrictedType: ai.RestrictedType,
-		Holders:        ai.Holders,
+		Name: ai.Name,
+		//Amount:         ai.Amount,
+		Units:       ai.Units,
+		Reissuable:  ai.Reissuable,
+		HasIpfs:     ai.HasIpfs,
+		Height:      ai.Height,
+		Message:     ai.Message,
+		IpfsHash:    ai.IpfsHash,
+		GenesisTxid: ai.GenesisTxid,
+		Time:        ai.Time,
+		//VerifierString: ai.VerifierString,
+		//QualifierType:  ai.QualifierType,
+		//Address:        ai.Address,
+		//RestrictedName: ai.RestrictedName,
+		//RestrictedType: ai.RestrictedType,
 	}
+
+	holders, err := w.chain.GetAssetAddresses(assetName)
+	if err != nil {
+		glog.Errorf("Could not Get Asset Holders: v%", err)
+		return nil, err
+	}
+	response.Holders = holders
 	b, err := w.db.GetLastAssetTxIndex()
 	for i := b; i > 0; i-- {
 		at, err := w.db.GetAssetTx(uint32(i))

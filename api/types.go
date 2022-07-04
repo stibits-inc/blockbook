@@ -528,6 +528,6 @@ type Asset struct {
 	Address        string                `json:"address,omitempty"`
 	RestrictedName string                `json:"restricted_name,omitempty"`
 	RestrictedType string                `json:"restricted_type,omitempty"`
-	Holders        []db.Holder           `json:"holders,omitempty,omitempty"`
+	Holders        map[string]float64    `json:"holders,omitempty,omitempty"`
 	Txs            []db.AssetTransaction `json:"transactions,omitempty"`
 }

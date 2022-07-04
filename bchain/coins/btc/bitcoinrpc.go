@@ -362,6 +362,21 @@ type ResGetRawTransaction struct {
 	Result json.RawMessage  `json:"result"`
 }
 
+type CmdListAddressesByAsset struct {
+	Method string `json:"method"`
+	Params struct {
+		Name      string `json:"asset_name"`
+		Onlytotal bool   `json:"onlytotal"`
+		Count     int    `json:"count"`
+		Start     int    `json:"start"`
+	} `json:"params"`
+}
+
+type ResListAddressesByAsset struct {
+	Error  *bchain.RPCError   `json:"error"`
+	Result map[string]float64 `json:"result"`
+}
+
 type ResGetRawTransactionNonverbose struct {
 	Error  *bchain.RPCError `json:"error"`
 	Result string           `json:"result"`
@@ -1039,4 +1054,22 @@ func (b *BitcoinRPC) Call(req interface{}, res interface{}) error {
 		return nil
 	}
 	return safeDecodeResponse(httpRes.Body, &res)
+}
+
+func (b *BitcoinRPC) GetAssetAddresses(name string) (map[string]float64, error) {
+	res := ResListAddressesByAsset{}
+	req := CmdListAddressesByAsset{Method: "listaddressesbyasset"}
+	req.Params.Name = name
+	err := b.Call(&req, &res)
+
+	if err != nil {
+		return nil, errors.Annotatef(err, "asset_name %v", name)
+	}
+	if res.Error != nil {
+		if IsMissingTx(res.Error) {
+			return nil, bchain.ErrTxNotFound
+		}
+		return nil, errors.Annotatef(res.Error, "asset_name %v", name)
+	}
+	return res.Result, nil
 }
