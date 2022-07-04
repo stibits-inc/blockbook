@@ -365,10 +365,10 @@ type ResGetRawTransaction struct {
 type CmdListAddressesByAsset struct {
 	Method string `json:"method"`
 	Params struct {
-		Name      string `json:"asset_name"`
-		Onlytotal bool   `json:"onlytotal"`
-		Count     int    `json:"count"`
-		Start     int    `json:"start"`
+		Name string `json:"asset_name"`
+		// Onlytotal bool   `json:"onlytotal"`
+		// Count     int    `json:"count"`
+		// Start     int    `json:"start"`
 	} `json:"params"`
 }
 
