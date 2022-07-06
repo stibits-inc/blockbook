@@ -295,6 +295,7 @@ func (s *PublicServer) jsonHandler(handler func(r *http.Request, apiVersion int)
 	}
 	handlerName := getFunctionName(handler)
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		var data interface{}
 		var err error
 		defer func() {
@@ -1178,10 +1179,14 @@ func (s *PublicServer) apiBlocks(r *http.Request, apiVersion int) (interface{}, 
 	s.metrics.ExplorerViews.With(common.Labels{"action": "api-blocks"}).Inc()
 	if i := strings.LastIndexByte(r.URL.Path, '/'); i > 0 {
 		page, ec := strconv.Atoi(r.URL.Query().Get("page"))
+		pageSize, ec := strconv.Atoi(r.URL.Query().Get("pageSize"))
+		if ec != nil {
+			pageSize = blocksInAPI
+		}
 		if ec != nil {
 			page = 0
 		}
-		blocks, err = s.api.GetBlocks(page, blocksInAPI)
+		blocks, err = s.api.GetBlocks(page, pageSize)
 	}
 	return blocks, err
 }

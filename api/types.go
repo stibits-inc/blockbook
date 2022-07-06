@@ -382,7 +382,8 @@ func (a BalanceHistories) SortAndAggregate(groupByTime uint32) BalanceHistories 
 // Blocks is list of blocks with paging information
 type Blocks struct {
 	Paging
-	Blocks []db.BlockInfo `json:"blocks"`
+	BestHeight uint32         `json:"bestHeight,omitempty"`
+	Blocks     []db.BlockInfo `json:"blocks"`
 }
 
 type BlockDetails struct {
@@ -404,6 +405,10 @@ type BlocksDetails struct {
 type TxAssets struct {
 	Paging
 	TxAssets []db.AssetTransaction `json:"txs,omitempty"`
+}
+type Assets struct {
+	Paging
+	Assets []Asset `json:"txs,omitempty"`
 }
 
 type MarketData struct {
@@ -435,7 +440,7 @@ type AssetOverviewData struct {
 	CountReissueAssetsType  [][]int64             `json:"countReissueAssetsType"`
 	AdminAssetsCount        int                   `json:"adminAssetsCount"`
 	NonAdminAssetsCount     int                   `json:"nonAdminAssetsCount"`
-	RecentlyCreatedAssets   []db.AssetInfo        `json:"recentlyCreatedAssets"`
+	RecentlyCreatedAssets   []Asset               `json:"recentlyCreatedAssets"`
 	RecentAssetMovements    []db.AssetTransaction `json:"recentAssetMovements"`
 }
 
@@ -453,6 +458,9 @@ type BlockInfo struct {
 	Nonce         string            `json:"nonce"`
 	Bits          string            `json:"bits"`
 	Difficulty    string            `json:"difficulty"`
+	Movement      big.Int           `json:"movement"`
+	PowReward     big.Int           `json:"powReward"`
+	Fees          big.Int           `json:"fees"`
 	Txids         []string          `json:"tx,omitempty"`
 }
 
@@ -515,7 +523,7 @@ type MempoolTxids struct {
 type Asset struct {
 	Name           string                `json:"name"`
 	Amount         float64               `json:"amount"`
-	Units          int64                 `json:"units,omitempty"`
+	Units          *int64                `json:"units,omitempty"`
 	Reissuable     int                   `json:"reissuable,omitempty"`
 	HasIpfs        int                   `json:"hasIpfs,omitempty"`
 	Height         uint32                `json:"height,"`

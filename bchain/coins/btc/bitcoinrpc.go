@@ -1073,3 +1073,33 @@ func (b *BitcoinRPC) GetAssetAddresses(name string) (map[string]float64, error) 
 	}
 	return res.Result, nil
 }
+
+type CmdGetAssetData struct {
+	Method string `json:"method"`
+	Params struct {
+		Name string `json:"asset_name"`
+	} `json:"params"`
+}
+
+type ResGetAssetData struct {
+	Error  *bchain.RPCError `json:"error"`
+	Result *bchain.Asset    `json:"result"`
+}
+
+func (b *BitcoinRPC) GetAssetData(name string) (*bchain.Asset, error) {
+	res := ResGetAssetData{}
+	req := CmdGetAssetData{Method: "getassetdata"}
+	req.Params.Name = name
+	err := b.Call(&req, &res)
+
+	if err != nil {
+		return nil, errors.Annotatef(err, "asset_name %v", name)
+	}
+	if res.Error != nil {
+		if IsMissingTx(res.Error) {
+			return nil, bchain.ErrTxNotFound
+		}
+		return nil, errors.Annotatef(res.Error, "asset_name %v", name)
+	}
+	return res.Result, nil
+}

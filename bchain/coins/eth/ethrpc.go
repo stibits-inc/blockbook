@@ -816,3 +816,7 @@ func (b *EthereumRPC) GetChainParser() bchain.BlockChainParser {
 func (b *EthereumRPC) GetAssetAddresses(name string) (map[string]float64, error) {
 	return nil, nil
 }
+
+func (b *EthereumRPC) GetAssetData(name string) (*bchain.Asset, error) {
+	return nil, nil
+}

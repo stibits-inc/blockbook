@@ -116,7 +116,10 @@ const (
 	// RavencoinType
 	cfAssets
 	//cfAssetHolders
+
 	cfTxAssets
+	cfAssetIndex
+
 	cfAssetTxs30d
 	// EthereumType
 	cfAddressContracts = cfAddressBalance
@@ -128,7 +131,7 @@ var cfBaseNames = []string{"default", "height", "addresses", "blockTxs", "transa
 
 // type specific columns
 var cfNamesBitcoinType = []string{"addressBalance", "txAddresses"}
-var cfNamesRavencoinType = []string{"assets", "txAssets", "assetTxs30d"}
+var cfNamesRavencoinType = []string{"assets", "txAssets", "assetIndex", "assetTxs30d"}
 var cfNamesEthereumType = []string{"addressContracts"}
 
 func openDB(path string, c *gorocksdb.Cache, openFiles int) (*gorocksdb.DB, []*gorocksdb.ColumnFamilyHandle, error) {
@@ -552,6 +555,7 @@ type TxAddresses struct {
 	Height  uint32
 	Inputs  []TxInput
 	Outputs []TxOutput
+	Size    int
 }
 
 // Utxo holds information about unspent transaction output
@@ -705,7 +709,7 @@ func (d *RocksDB) processAddressesBitcoinType(block *bchain.Block, addresses add
 			return err
 		}
 		blockTxIDs[txi] = btxID
-		ta := TxAddresses{Height: block.Height}
+		ta := TxAddresses{Height: block.Height, Size: tx.Size}
 		ta.Outputs = make([]TxOutput, len(tx.Vout))
 		txAddressesMap[string(btxID)] = &ta
 		blockTxAddresses[txi] = &ta
@@ -1056,6 +1060,9 @@ func packTxAddresses(ta *TxAddresses, buf []byte, varBuf []byte) []byte {
 	buf = buf[:0]
 	l := packVaruint(uint(ta.Height), varBuf)
 	buf = append(buf, varBuf[:l]...)
+	l = packVarint(ta.Size, varBuf)
+	buf = append(buf, varBuf[:l]...)
+
 	l = packVaruint(uint(len(ta.Inputs)), varBuf)
 	buf = append(buf, varBuf[:l]...)
 	for i := range ta.Inputs {
@@ -1158,6 +1165,9 @@ func unpackTxAddresses(buf []byte) (*TxAddresses, error) {
 	ta := TxAddresses{}
 	height, l := unpackVaruint(buf)
 	ta.Height = uint32(height)
+	size, sl := unpackVarint(buf[l:])
+	ta.Size = size
+	l += sl
 	inputs, ll := unpackVaruint(buf[l:])
 	l += ll
 	ta.Inputs = make([]TxInput, inputs)
@@ -1247,37 +1257,28 @@ func (d *RocksDB) unpackNOutpoints(buf []byte) ([]outpoint, int, error) {
 
 // BlockInfo holds information about blocks kept in column height
 type BlockInfo struct {
-	Hash          string
-	Time          int64
-	Txs           uint32
-	Size          uint32
-	Height        uint32 // Height is not packed!
-	Movement      big.Int
-	OutputsAmount big.Int
-	Fees          big.Int
-	PoWReward     big.Int
-	PoWWinner     string
+	Hash          string  `json:"hash,omitempty"`
+	Time          int64   `json:"time,omitempty"`
+	Txs           uint32  `json:"txs,omitempty"`
+	Size          uint32  `json:"size,omitempty"`
+	Height        uint32  `json:"height,omitempty"` // Height is not packed!
+	Movement      big.Int `json:"movement,omitempty"`
+	OutputsAmount big.Int `json:"outputAmount,omitempty"`
+	Fees          big.Int `json:"fees,omitempty"`
+	PoWReward     big.Int `json:"powReward,omitempty"`
+	PoWWinner     string  `json:"powWinner,omitempty"`
 }
 
 type AssetInfo struct {
 	Name        string `json:"name"`
-	Units       int64  `json:"units,omitempty"`
+	Units       *int64 `json:"units,omitempty"`
 	Reissuable  int    `json:"reissuable,omitempty"`
-	HasIpfs     int    `json:"hasIpfs,omitempty"`
-	Height      uint32 `json:"height,"`
-	IpfsHash    string `json:"ipfsHash,omitempty"`
+	HasIpfs     int    `json:"has_ipfs,omitempty"`
+	IpfsHash    string `json:"ipfs_hash,omitempty"`
+	Height      uint32 `json:"height,omitempty"`
 	GenesisTxid string `json:"genesisTxid,omitempty"`
 	Time        int64  `json:"time,omitempty"`
-
-	//Holders int    `json:"holders,omitempty"`
-	Message string `json:"message,omitempty"`
-
-	//VerifierString string  `json:"verifier_string,omitempty"`
-	//QualifierType  string  `json:"qualifier_type,omitempty"`
-	//Address        string  `json:"address,omitempty"`
-	//RestrictedName string  `json:"restricted_name,omitempty"`
-	//RestrictedType string  `json:"restricted_type,omitempty"`
-
+	TxIndexes   []uint32
 }
 
 type Holder struct {
@@ -2289,6 +2290,7 @@ func (d *RocksDB) processTxsRavencoinType(wb *gorocksdb.WriteBatch, block *bchai
 	//var powWinner string
 	height := block.Height
 	time := block.Time
+	blockTxAssetIndexes := make(map[string][]uint32)
 	//glog.Infof("Block: %v time %v time", height, time)
 	for n, tx := range block.Txs {
 		//glog.Infof("Processing tx %v", tx.Txid)
@@ -2325,7 +2327,9 @@ func (d *RocksDB) processTxsRavencoinType(wb *gorocksdb.WriteBatch, block *bchai
 
 				if vout.ScriptPubKey.Asset != nil {
 					//glog.Infof("Spend From An asset %v type %v", vout.ScriptPubKey.Asset.Name, vout.ScriptPubKey.Type)
-					d.SpendAssetInTx(vout.ScriptPubKey.Asset, vout.ScriptPubKey.Addresses, height, txid, time)
+					txIndexes, _ := d.SpendAssetInTx(vout.ScriptPubKey.Asset, vout.ScriptPubKey.Addresses, height, txid, time)
+					name := vout.ScriptPubKey.Asset.Name
+					blockTxAssetIndexes[name] = append(blockTxAssetIndexes[name], txIndexes[name])
 				}
 
 			}
@@ -2342,7 +2346,9 @@ func (d *RocksDB) processTxsRavencoinType(wb *gorocksdb.WriteBatch, block *bchai
 			}
 
 			if output.ScriptPubKey.Asset != nil {
-				d.ReceiveAssetFromTx(output.ScriptPubKey.Asset, output.ScriptPubKey.Addresses, output.ScriptPubKey.Type, height, txid, time)
+				txIndexes, _ := d.ReceiveAssetFromTx(output.ScriptPubKey.Asset, output.ScriptPubKey.Addresses, output.ScriptPubKey.Type, height, txid, time)
+				name := output.ScriptPubKey.Asset.Name
+				blockTxAssetIndexes[name] = append(blockTxAssetIndexes[name], txIndexes[name]...)
 			}
 
 			if output.ScriptPubKey.AssetData != nil {
@@ -2358,6 +2364,12 @@ func (d *RocksDB) processTxsRavencoinType(wb *gorocksdb.WriteBatch, block *bchai
 	block.OutputsAmount = valOutSat
 	block.PoWReward = PoWReward
 	block.Fees = feesSat
+	for name, indexes := range blockTxAssetIndexes {
+		err := d.appendAssetTxIndex(name, indexes)
+		if err != nil {
+			glog.Errorf("Could not append asset tx indexes %v", err)
+		}
+	}
 	return block, nil
 
 }
@@ -2381,75 +2393,119 @@ func packFloat64(f float64, buffer []byte) int {
 	return len(buf.Bytes())
 }
 
-func (d *RocksDB) SpendAssetInTx(asset *bchain.Asset, addresses []string, height uint32, txid string, time int64) error {
+func (d *RocksDB) SpendAssetInTx(asset *bchain.Asset, addresses []string, height uint32, txid string, time int64) (map[string]uint32, error) {
 	address := strings.Join(addresses, ",")
-	var err error
+	txIndexes := make(map[string]uint32)
+
 	//err = d.updateAsset(&AssetInfo{Name: asset.Name}, address, -asset.Amount)
-	err = d.saveCountByType("transfer_asset", truncate(time))
-	err = d.SpendOrReceiveAssetInTx(asset.Name, -asset.Amount, address, height, txid, time)
-	return err
+	err := d.saveCountByType("transfer_asset", truncate(time))
+	if err != nil {
+		return nil, err
+	}
+	txIndex, err := d.SpendOrReceiveAssetInTx(asset.Name, -asset.Amount, address, height, txid, time)
+	txIndexes[asset.Name] = txIndex
+	return txIndexes, err
 }
 
-func (d *RocksDB) ReceiveAssetFromTx(asset *bchain.Asset, addresses []string, Type string, height uint32, txid string, time int64) error {
+func (d *RocksDB) ReceiveAssetFromTx(asset *bchain.Asset, addresses []string, Type string, height uint32, txid string, time int64) (map[string][]uint32, error) {
 	address := strings.Join(addresses, ",")
+	txIndexes := make(map[string][]uint32)
 	switch Type {
 	case "new_asset":
-		assetInfo := &AssetInfo{
-			Name: asset.Name,
-			//Amount:      asset.Amount,
-			Units:       asset.Units,
-			Reissuable:  asset.Reissuable,
-			HasIpfs:     asset.HasIpfs,
-			Height:      height,
-			IpfsHash:    asset.IpfsHash,
-			GenesisTxid: txid,
-			Time:        time,
-		}
-		err := d.writeAsset(assetInfo)
-		d.SpendOrReceiveAssetInTx(asset.Name, -asset.Amount, "New Asset", height, txid, time)
-		d.SpendOrReceiveAssetInTx(asset.Name, asset.Amount, address, height, txid, time)
-		//assetInfo.Holders = d.updateAssetHolders(asset.Name, address, asset.Amount, 0)
-		d.saveCountByType(Type, truncate(time))
-
+		var assetInfo *AssetInfo
 		if strings.HasSuffix(asset.Name, "!") {
+			assetInfo = &AssetInfo{
+				Name:        asset.Name,
+				Units:       asset.Units,
+				Reissuable:  asset.Reissuable,
+				HasIpfs:     asset.HasIpfs,
+				IpfsHash:    asset.IpfsHash,
+				Height:      height,
+				GenesisTxid: txid,
+				Time:        time,
+			}
 			d.IncrementAdminAssets("adminAssetsCount")
 		} else {
+			assetInfo = &AssetInfo{
+				Name:        asset.Name,
+				Height:      height,
+				GenesisTxid: txid,
+				Time:        time,
+			}
 			d.IncrementAdminAssets("nonAdminAssetsCount")
 		}
 
-		return err
-	case "reissue_asset":
-		assetInfo := &AssetInfo{
-			Name:       asset.Name,
-			Units:      asset.Units,
-			Reissuable: asset.Reissuable,
-			HasIpfs:    asset.HasIpfs,
-			IpfsHash:   asset.IpfsHash,
-		}
-		d.SpendOrReceiveAssetInTx(asset.Name, -asset.Amount, "Reissue Asset", height, txid, time)
-		d.SpendOrReceiveAssetInTx(asset.Name, asset.Amount, address, height, txid, time)
 		err := d.writeAsset(assetInfo)
-		d.saveCountByType(Type, truncate(time))
-		return err
-	case "transfer_asset":
-		//d.updateAsset(&AssetInfo{Name: asset.Name}, address, asset.Amount)
-		return d.SpendOrReceiveAssetInTx(asset.Name, asset.Amount, address, height, txid, time)
+		if err != nil {
+			return nil, err
+		}
+		d.IncAndSaveAssetIndex(asset.Name)
 
+		txIndex1, _ := d.SpendOrReceiveAssetInTx(asset.Name, -asset.Amount, "New Asset", height, txid, time)
+		txIndex2, _ := d.SpendOrReceiveAssetInTx(asset.Name, asset.Amount, address, height, txid, time)
+		txIndexes[asset.Name] = append(txIndexes[asset.Name], []uint32{txIndex1, txIndex2}...)
+
+		//assetInfo.Holders = d.updateAssetHolders(asset.Name, address, asset.Amount, 0)
+		d.saveCountByType(Type, truncate(time))
+
+		return txIndexes, nil
+	case "reissue_asset":
+		txIndex1, _ := d.SpendOrReceiveAssetInTx(asset.Name, -asset.Amount, "Reissue Asset", height, txid, time)
+		txIndex2, _ := d.SpendOrReceiveAssetInTx(asset.Name, asset.Amount, address, height, txid, time)
+		txIndexes[asset.Name] = append(txIndexes[asset.Name], []uint32{txIndex1, txIndex2}...)
+
+		d.saveCountByType(Type, truncate(time))
+		return txIndexes, nil
+	case "transfer_asset":
+		txIndex1, _ := d.SpendOrReceiveAssetInTx(asset.Name, asset.Amount, address, height, txid, time)
+		txIndexes[asset.Name] = append(txIndexes[asset.Name], txIndex1)
+		return txIndexes, nil
 	default: //nullassetdata
-		return nil
+		txIndex1, _ := d.SpendOrReceiveAssetInTx(asset.Name, asset.Amount, address, height, txid, time)
+		txIndexes[asset.Name] = append(txIndexes[asset.Name], txIndex1)
+		return txIndexes, nil
 
 	}
 }
 
-func (d *RocksDB) SpendOrReceiveAssetInTx(Name string, amount float64, address string, height uint32, txid string, time int64) (err error) {
-	return d.PutAssetTx(&AssetTransaction{
+func (d *RocksDB) SpendOrReceiveAssetInTx(Name string, amount float64, address string, height uint32, txid string, time int64) (txIndex uint32, err error) {
+	assetTx := &AssetTransaction{
 		Name:    Name,
 		Amount:  amount,
 		Address: address,
 		Time:    time,
 		Txid:    txid,
 		Height:  height,
-	})
+	}
+	//var assetTxs []*AssetTransaction
+	var lastAssetTxIndex uint32 = 0
+	latiKey := []byte("last-asset-tx-index")
+	lastAssetTxIndexBuf, _ := d.db.GetCF(d.ro, d.cfh[cfDefault], latiKey)
+
+	if lastAssetTxIndexBuf.Data() != nil {
+		lastAssetTxIndex = unpackUint(lastAssetTxIndexBuf.Data())
+	}
+
+	val, marErr := json.Marshal(assetTx)
+	if marErr != nil {
+		glog.Infof("Error marshal Tx Assets %v", marErr)
+		return 0, marErr
+	}
+	key := packUint(lastAssetTxIndex + 1)
+	d.db.PutCF(d.wo, d.cfh[cfDefault], latiKey, key)
+	if err != nil {
+		glog.Errorf("PutAssetTx: Could not append tx index to asset %v", err)
+	}
+	return lastAssetTxIndex + 1, d.db.PutCF(d.wo, d.cfh[cfTxAssets], key, val)
+}
+
+func (d *RocksDB) IncAndSaveAssetIndex(name string) error {
+	lastIndex, _ := d.GetLastAssetIndex()
+	lastIndexKey := []byte("last-asset-index")
+	key := packUint(lastIndex + 1)
+	d.db.PutCF(d.wo, d.cfh[cfDefault], lastIndexKey, key)
+	return d.db.PutCF(d.wo, d.cfh[cfAssetIndex], key, []byte(name))
+
 }
 
 /*func find(sh []Holder, exist func(Holder) bool) (holders *Holder, index int) {
@@ -2488,8 +2544,6 @@ func (d *RocksDB) GetAdminAssetsCount(keyName string) (int, error) {
 }
 
 func (d *RocksDB) writeAsset(ai *AssetInfo) error {
-	fmt.Printf("Writing asset %v", ai.Name)
-
 	key := []byte(ai.Name)
 	val, err := json.Marshal(ai)
 	if err != nil || val == nil {
@@ -2523,9 +2577,9 @@ func (d *RocksDB) writeAsset(ai *AssetInfo) error {
 
 	return d.writeAsset(assetInfo)
 
-}*/
+}
 
-/*func (d *RocksDB) updateAssetHolders(name string, address string, amount float64, holders int) int {
+func (d *RocksDB) updateAssetHolders(name string, address string, amount float64, holders int) int {
 	alreadyExist := false
 	for i := 1; i <= holders-1; i++ {
 		assetHolder, _ := d.db.GetCF(d.ro, d.cfh[cfAssetHolders], []byte(fmt.Sprint(name, i)))
@@ -2546,9 +2600,9 @@ func (d *RocksDB) writeAsset(ai *AssetInfo) error {
 		d.db.PutCF(d.wo, d.cfh[cfAssetHolders], []byte(fmt.Sprint(name, holders)), buf)
 	}
 	return holders
-}*/
+}
 
-/*func (d *RocksDB) GetAssetHolders(name string, holders int) []Holder {
+func (d *RocksDB) GetAssetHolders(name string, holders int) []Holder {
 	var holdersList []Holder
 	for i := 1; i <= holders; i++ {
 		var holder *Holder
@@ -2567,7 +2621,8 @@ func (d *RocksDB) GetAsset(name string) (*AssetInfo, error) {
 	key := []byte(name)
 	assetBuf, err := d.db.GetCF(d.ro, d.cfh[cfAssets], key)
 
-	var assetInfo *AssetInfo
+	var assetInfo AssetInfo
+	//var pAssetInfo *AssetInfo
 	if err != nil {
 		return nil, err
 	}
@@ -2578,35 +2633,23 @@ func (d *RocksDB) GetAsset(name string) (*AssetInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	return assetInfo, nil
+
+	return &assetInfo, nil
 }
 
-func (d *RocksDB) PutAssetTx(assetTx *AssetTransaction) error {
-	//var assetTxs []*AssetTransaction
-	var lastAssetTxIndex uint32 = 0
-	latiKey := []byte("last-asset-tx-index")
-	lastAssetTxIndexBuf, _ := d.db.GetCF(d.ro, d.cfh[cfDefault], latiKey)
-
-	if lastAssetTxIndexBuf.Data() != nil {
-		lastAssetTxIndex = unpackUint(lastAssetTxIndexBuf.Data())
+func (d *RocksDB) appendAssetTxIndex(name string, indexes []uint32) error {
+	assetInfo, err := d.GetAsset(name)
+	if err != nil {
+		glog.Errorf("appendAssetTxIndex: Could not find asset with name %v", name)
+		return err
 	}
-	/*if assetTxsBuf.Data() != nil {
-		if unmarErr := json.Unmarshal(assetTxsBuf.Data(), &assetTxs); unmarErr != nil {
-			glog.Infof("Error Unmarshal Tx Assets %v", unmarErr)
-		}
-
-	}*/
-	//assetTxs = append(assetTxs, assetTx)
-
-	//glog.Infof("Saving assetTxs %v", len(assetTxs))
-	val, marErr := json.Marshal(assetTx)
-	if marErr != nil {
-		glog.Infof("Error marshal Tx Assets %v", marErr)
-		return marErr
+	assetInfo.TxIndexes = append(assetInfo.TxIndexes, indexes...)
+	err = d.writeAsset(assetInfo)
+	if err != nil {
+		glog.Errorf("appendAssetTxIndex: Could not save asset %v", name)
+		return err
 	}
-	key := packUint(lastAssetTxIndex + 1)
-	d.db.PutCF(d.wo, d.cfh[cfDefault], latiKey, key)
-	return d.db.PutCF(d.wo, d.cfh[cfTxAssets], key, val)
+	return nil
 }
 
 func (d *RocksDB) GetAssetTxs() ([]AssetTransaction, error) {
@@ -2632,17 +2675,34 @@ func (d *RocksDB) GetLastAssetTxIndex() (uint32, error) {
 
 }
 
+func (d *RocksDB) GetLastAssetIndex() (uint32, error) {
+	var lastAssetIndex uint32 = 0
+	latiKey := []byte("last-asset-index")
+	lastAssetIndexBuf, err := d.db.GetCF(d.ro, d.cfh[cfDefault], latiKey)
+	if err != nil {
+		return lastAssetIndex, err
+	}
+	if lastAssetIndexBuf.Data() == nil {
+		return lastAssetIndex, nil
+	}
+	lastAssetIndex = unpackUint(lastAssetIndexBuf.Data())
+	return lastAssetIndex, nil
+
+}
+
 func (d *RocksDB) GetAssetTx(index uint32) (*AssetTransaction, error) {
 	txIndex := packUint(index)
 	assetTxBuf, err := d.db.GetCF(d.ro, d.cfh[cfTxAssets], txIndex)
 	if err != nil {
 		return nil, err
 	}
-	var assetTx *AssetTransaction
+	var assetTx AssetTransaction
+	//var pAssetTransaction *AssetTransaction
 	if err := json.Unmarshal(assetTxBuf.Data(), &assetTx); err != nil {
 		return nil, err
 	}
-	return assetTx, nil
+
+	return &assetTx, nil
 }
 
 // increment asset type count
@@ -2895,28 +2955,43 @@ func (d *RocksDB) GetAssets() []AssetInfo {
 	it := d.db.NewIteratorCF(d.ro, d.cfh[cfAssets])
 	for it.SeekToLast(); it.Valid(); it.Next() {
 		//addrBalance, _ := unpackAddrBalance(it.Value().Data(), d.chainParser.PackedTxidLen(), 0)
-		var asset *AssetInfo
+		var asset AssetInfo
 		err := json.Unmarshal(it.Value().Data(), &asset)
 		if err != nil {
 			glog.Errorf("Error while Unmarshaling an asset: %v", asset)
 		}
-		assets = append(assets, *asset)
+		assets = append(assets, asset)
 	}
 	return assets
+}
+
+func (d *RocksDB) GetAssetNameByIndex(index uint32) (string, error) {
+	key := packUint(index)
+	assetNameBuf, err := d.db.GetCF(d.ro, d.cfh[cfAssetIndex], key)
+	if err != nil {
+		return "", err
+	}
+	if assetNameBuf.Data() != nil {
+		return string(assetNameBuf.Data()), nil
+	}
+	return "", nil
+
 }
 
 func (d *RocksDB) GetLatestAssets() []AssetInfo {
 	var assets []AssetInfo
 	it := d.db.NewIteratorCF(d.ro, d.cfh[cfAssets])
-	for it.SeekToLast(); it.Valid(); it.Prev() {
+	lastAssetIndex, _ := d.GetLastAssetIndex()
+	for i := lastAssetIndex; i >= 1; i-- {
 		//addrBalance, _ := unpackAddrBalance(it.Value().Data(), d.chainParser.PackedTxidLen(), 0)
-		var asset *AssetInfo
+
+		var asset AssetInfo
 		if it.Value().Data() != nil {
 			err := json.Unmarshal(it.Value().Data(), &asset)
 			if err != nil {
 				glog.Errorf("Error while Unmarshaling an asset: %v", asset)
 			}
-			assets = append(assets, *asset)
+			assets = append(assets, asset)
 			if len(assets) == 5 {
 				break
 			}
@@ -2926,7 +3001,7 @@ func (d *RocksDB) GetLatestAssets() []AssetInfo {
 	return assets
 }
 
-func (d *RocksDB) packAssetInfo(asset *AssetInfo) ([]byte, error) {
+/*func (d *RocksDB) packAssetInfo(asset *AssetInfo) ([]byte, error) {
 	packed := make([]byte, 0, 32)
 	varBuf := make([]byte, vlq.MaxLen32)
 	a, err := hex.DecodeString(asset.Name)
@@ -3005,4 +3080,4 @@ func (d *RocksDB) unpackAssetInfo(buf []byte) (*AssetInfo, error) {
 		GenesisTxid: genesisTxid,
 		Time:        int64(t),
 	}, nil
-}
+}*/

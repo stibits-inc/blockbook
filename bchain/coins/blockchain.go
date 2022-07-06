@@ -395,3 +395,8 @@ func (c *blockChainWithMetrics) GetAssetAddresses(name string) (v map[string]flo
 	defer func(s time.Time) { c.observeRPCLatency("GetTransaction", s, err) }(time.Now())
 	return c.b.GetAssetAddresses(name)
 }
+
+func (c *blockChainWithMetrics) GetAssetData(name string) (s *bchain.Asset, err error) {
+	defer func(s time.Time) { c.observeRPCLatency("GetAssetData", s, err) }(time.Now())
+	return c.b.GetAssetData(name)
+}

@@ -360,6 +360,7 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 		Rbf:              rbf,
 		Vin:              vins,
 		Vout:             vouts,
+		Size:             bchainTx.Size,
 		CoinSpecificData: sj,
 		TokenTransfers:   tokens,
 		EthereumSpecific: ethSpecific,
@@ -673,6 +674,7 @@ func (w *Worker) txFromTxAddress(txid string, ta *db.TxAddresses, bi *db.BlockIn
 		Movement:      (*Amount)(pMovement),
 		Vin:           vins,
 		Vout:          vouts,
+		Size:          ta.Size,
 	}
 	return r
 }
@@ -1413,7 +1415,7 @@ func (w *Worker) GetBlocks(page int, blocksOnPage int) (*Blocks, error) {
 		return nil, errors.Annotatef(err, "GetBestBlock")
 	}
 	pg, from, to, page := computePaging(bestheight+1, page, blocksOnPage)
-	r := &Blocks{Paging: pg}
+	r := &Blocks{Paging: pg, BestHeight: b}
 	r.Blocks = make([]db.BlockInfo, to-from)
 	for i := from; i < to; i++ {
 		bi, err := w.db.GetBlockInfo(uint32(bestheight - i))
@@ -1443,7 +1445,11 @@ func (w *Worker) GetAssetsOverviewData() (*AssetOverviewData, error) {
 	if assetsMovements != nil {
 		latestAssetMovements = assetsMovements.TxAssets
 	}
-	last24hCreatedAssetsList := w.db.GetLatestAssets()
+	last24hCreatedAssetsList, err := w.GetAssets(0, 5)
+	var last24hCreatedAssetsSet []Asset
+	if last24hCreatedAssetsList != nil {
+		last24hCreatedAssetsSet = last24hCreatedAssetsList.Assets
+	}
 	return &AssetOverviewData{
 		Last24hCreatedAssets:    last24hCreatedAssets,
 		Last24hTxdAssets:        last24TxAssets,
@@ -1452,7 +1458,7 @@ func (w *Worker) GetAssetsOverviewData() (*AssetOverviewData, error) {
 		CountReissueAssetsType:  countReissueAssetType,
 		AdminAssetsCount:        adminAssetsCount,
 		NonAdminAssetsCount:     nonAdminAssetsCount,
-		RecentlyCreatedAssets:   last24hCreatedAssetsList,
+		RecentlyCreatedAssets:   last24hCreatedAssetsSet,
 		RecentAssetMovements:    latestAssetMovements,
 	}, err
 }
@@ -1474,25 +1480,36 @@ func (w *Worker) GetAsset(assetName string) (*Asset, error) {
 
 	ai, err := w.db.GetAsset(assetName)
 	if err != nil {
+		glog.Errorf("Could not get asset %v from db %v", assetName, err)
 		return nil, err
 	}
-
-	response := &Asset{
-		Name: ai.Name,
-		//Amount:         ai.Amount,
-		Units:       ai.Units,
-		Reissuable:  ai.Reissuable,
-		HasIpfs:     ai.HasIpfs,
-		Height:      ai.Height,
-		Message:     ai.Message,
-		IpfsHash:    ai.IpfsHash,
-		GenesisTxid: ai.GenesisTxid,
-		Time:        ai.Time,
-		//VerifierString: ai.VerifierString,
-		//QualifierType:  ai.QualifierType,
-		//Address:        ai.Address,
-		//RestrictedName: ai.RestrictedName,
-		//RestrictedType: ai.RestrictedType,
+	ad, err := w.chain.GetAssetData(assetName)
+	if err != nil {
+		glog.Errorf("Could not get asset %v from bchain %v", assetName, err)
+		return nil, err
+	}
+	glog.Infof("Asset %v Data %v", assetName, ad)
+	var response *Asset
+	if strings.HasSuffix(assetName, "!") {
+		response = &Asset{
+			Name:        ai.Name,
+			GenesisTxid: ai.GenesisTxid,
+			Time:        ai.Time,
+			//Amount:      ai.Amount,
+			Units:      ai.Units,
+			Reissuable: ai.Reissuable,
+			HasIpfs:    ai.HasIpfs,
+		}
+	} else {
+		response = &Asset{
+			Name:        ai.Name,
+			GenesisTxid: ai.GenesisTxid,
+			Time:        ai.Time,
+			Amount:      ad.Amount,
+			Units:       ad.Units,
+			Reissuable:  ad.Reissuable,
+			HasIpfs:     ad.HasIpfs,
+		}
 	}
 
 	holders, err := w.chain.GetAssetAddresses(assetName)
@@ -1541,6 +1558,41 @@ func (w *Worker) GetAssetMovements(page int, blocksOnPage int) (*TxAssets, error
 			break
 		}
 		r.TxAssets[i-from] = *at
+	}
+	glog.Info("GetTxAssets page ", page, ", ", time.Since(start))
+	return r, nil
+}
+
+func (w *Worker) GetAssets(page int, blocksOnPage int) (*Assets, error) {
+	start := time.Now()
+	page--
+	if page < 0 {
+		page = 0
+	}
+	b, err := w.db.GetLastAssetIndex()
+	lastIndex := int(b)
+	if err != nil {
+		return nil, errors.Annotatef(err, "GetBestBlock")
+	}
+	pg, from, to, page := computePaging(lastIndex, page, blocksOnPage)
+	r := &Assets{Paging: pg}
+	r.Assets = make([]Asset, to-from)
+	for i := from; i < to; i++ {
+		name, err := w.db.GetAssetNameByIndex(uint32(lastIndex - i))
+		if err != nil {
+			glog.Errorf("Could not Get asset name by index %v", lastIndex-i)
+			return nil, err
+		}
+		at, err := w.GetAsset(name)
+		if err != nil {
+			glog.Errorf("Could not Get asset name %v", lastIndex-i)
+			return nil, err
+		}
+		if at == nil {
+			r.Assets = r.Assets[:i-1]
+			break
+		}
+		r.Assets[i-from] = *at
 	}
 	glog.Info("GetTxAssets page ", page, ", ", time.Since(start))
 	return r, nil
@@ -1977,17 +2029,14 @@ func (w *Worker) GetBlock(bid string, page int, txsOnPage int) (*Block, error) {
 		page = 0
 	}
 	bi, err := w.getBlockInfoFromBlockID(bid)
+	dbi, err := w.db.GetBlockInfo(bi.Height)
 	if err != nil {
 		if err == bchain.ErrBlockNotFound {
 			return nil, NewAPIError("Block not found", true)
 		}
 		return nil, NewAPIError(fmt.Sprintf("Block not found, %v", err), true)
 	}
-	dbi := &db.BlockInfo{
-		Hash:   bi.Hash,
-		Height: bi.Height,
-		Time:   bi.Time,
-	}
+
 	txCount := len(bi.Txids)
 	bestheight, _, err := w.db.GetBestBlock()
 	if err != nil {
@@ -2027,6 +2076,9 @@ func (w *Worker) GetBlock(bid string, page int, txsOnPage int) (*Block, error) {
 			Difficulty:    string(bi.Difficulty),
 			MerkleRoot:    bi.MerkleRoot,
 			Nonce:         string(bi.Nonce),
+			Movement:      dbi.Movement,
+			PowReward:     dbi.PoWReward,
+			Fees:          dbi.Fees,
 			Txids:         bi.Txids,
 			Version:       bi.Version,
 		},

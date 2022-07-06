@@ -93,6 +93,7 @@ type Tx struct {
 	Confirmations    uint32      `json:"confirmations,omitempty"`
 	Time             int64       `json:"time,omitempty"`
 	Blocktime        int64       `json:"blocktime,omitempty"`
+	Size             int         `json:"size,omitempty"`
 	CoinSpecificData interface{} `json:"-"`
 }
 
@@ -279,7 +280,7 @@ type XpubDescriptor struct {
 type Asset struct {
 	Name       string  `json:"name"`
 	Amount     float64 `json:"amount"`
-	Units      int64   `json:"units"`
+	Units      *int64  `json:"units"`
 	Reissuable int     `json:"reissuable"`
 	HasIpfs    int     `json:"has_ipfs"`
 	IpfsHash   string  `json:"ipfs_hash"`
@@ -361,6 +362,7 @@ type BlockChain interface {
 	GetMempoolTransactions() ([]string, error)
 	GetTransaction(txid string) (*Tx, error)
 	GetAssetAddresses(name string) (map[string]float64, error)
+	GetAssetData(name string) (*Asset, error)
 	GetTransactionForMempool(txid string) (*Tx, error)
 	GetTransactionSpecific(tx *Tx) (json.RawMessage, error)
 	EstimateSmartFee(blocks int, conservative bool) (big.Int, error)
