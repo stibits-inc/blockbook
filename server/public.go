@@ -176,7 +176,7 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 	serveMux.HandleFunc(path+"api/xpub/", s.jsonHandler(s.apiXpub, apiDefault))
 	serveMux.HandleFunc(path+"api/utxo/", s.jsonHandler(s.apiUtxo, apiDefault))
 	serveMux.HandleFunc(path+"api/block/", s.jsonHandler(s.apiBlock, apiDefault))
-	serveMux.HandleFunc(path+"api/blocks/", s.jsonHandler(s.apiBlocksDetails, apiDefault))
+	serveMux.HandleFunc(path+"api/rawblock/", s.jsonHandler(s.apiBlockRaw, apiDefault))
 	serveMux.HandleFunc(path+"api/sendtx/", s.jsonHandler(s.apiSendTx, apiDefault))
 	serveMux.HandleFunc(path+"api/estimatefee/", s.jsonHandler(s.apiEstimateFee, apiDefault))
 	serveMux.HandleFunc(path+"api/balancehistory/", s.jsonHandler(s.apiBalanceHistory, apiDefault))
@@ -188,12 +188,13 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 	serveMux.HandleFunc(path+"api/v2/xpub/", s.jsonHandler(s.apiXpub, apiV2))
 	serveMux.HandleFunc(path+"api/v2/utxo/", s.jsonHandler(s.apiUtxo, apiV2))
 	serveMux.HandleFunc(path+"api/v2/block/", s.jsonHandler(s.apiBlock, apiV2))
-	serveMux.HandleFunc(path+"api/v2/blocks/", s.jsonHandler(s.apiBlocksDetails, apiV2))
+	serveMux.HandleFunc(path+"api/v2/rawblock/", s.jsonHandler(s.apiBlockRaw, apiDefault))
 	serveMux.HandleFunc(path+"api/v2/sendtx/", s.jsonHandler(s.apiSendTx, apiV2))
 	serveMux.HandleFunc(path+"api/v2/estimatefee/", s.jsonHandler(s.apiEstimateFee, apiV2))
 	serveMux.HandleFunc(path+"api/v2/feestats/", s.jsonHandler(s.apiFeeStats, apiV2))
 	serveMux.HandleFunc(path+"api/v2/balancehistory/", s.jsonHandler(s.apiBalanceHistory, apiDefault))
 	serveMux.HandleFunc(path+"api/v2/tickers/", s.jsonHandler(s.apiTickers, apiV2))
+	serveMux.HandleFunc(path+"api/v2/multi-tickers/", s.jsonHandler(s.apiMultiTickers, apiV2))
 	serveMux.HandleFunc(path+"api/v2/tickers-list/", s.jsonHandler(s.apiTickersList, apiV2))
 	serveMux.HandleFunc(path+"api/v2/gasprice/", s.jsonHandler(s.apiGasPrice, apiV2))
 	serveMux.HandleFunc(path+"api/v2/estimategas", s.jsonHandler(s.apiEstimateGas, apiV2))
@@ -462,7 +463,6 @@ func (s *PublicServer) parseTemplates() []*template.Template {
 		"formatAmountWithDecimals": formatAmountWithDecimals,
 		"setTxToTemplateData":      setTxToTemplateData,
 		"isOwnAddress":             isOwnAddress,
-		"isOwnAddresses":           isOwnAddresses,
 		"toJSON":                   toJSON,
 	}
 	var createTemplate func(filenames ...string) *template.Template
@@ -561,27 +561,9 @@ func setTxToTemplateData(td *TemplateData, tx *api.Tx) *TemplateData {
 	return td
 }
 
-// returns true if address is "own",
-// i.e. either the address of the address detail or belonging to the xpub
+// isOwnAddress returns true if the address is the one that is being shown in the explorer
 func isOwnAddress(td *TemplateData, a string) bool {
-	if a == td.AddrStr {
-		return true
-	}
-	if td.Address != nil && td.Address.XPubAddresses != nil {
-		if _, found := td.Address.XPubAddresses[a]; found {
-			return true
-		}
-	}
-	return false
-}
-
-// returns true if addresses are "own",
-// i.e. either the address of the address detail or belonging to the xpub
-func isOwnAddresses(td *TemplateData, addresses []string) bool {
-	if len(addresses) == 1 {
-		return isOwnAddress(td, addresses[0])
-	}
-	return false
+	return a == td.AddrStr
 }
 
 func (s *PublicServer) explorerTx(w http.ResponseWriter, r *http.Request) (tpl, *TemplateData, error) {
@@ -1085,7 +1067,8 @@ func (s *PublicServer) apiUtxo(r *http.Request, apiVersion int) (interface{}, er
 	var unusedIntAddress *string
 	var balanceSat *api.Amount
 
-	if i := strings.LastIndexByte(r.URL.Path, '/'); i > 0 {
+	if i := strings.LastIndex(r.URL.Path, "utxo/"); i > 0 {
+		desc := r.URL.Path[i+5:]
 		onlyConfirmed := false
 		c := r.URL.Query().Get("confirmed")
 		a := r.URL.Query().Get("assets")
@@ -1109,11 +1092,13 @@ func (s *PublicServer) apiUtxo(r *http.Request, apiVersion int) (interface{}, er
 		if ec != nil {
 			gap = 0
 		}
-		utxo, unusedIntAddress, balanceSat, err = s.api.GetXpubUtxo(r.URL.Path[i+1:], onlyConfirmed, gap, includeAssets)
+
+		utxo, unusedIntAddress, balanceSat, err = s.api.GetXpubUtxo(desc, onlyConfirmed, gap, includeAssets)
+
 		if err == nil {
 			s.metrics.ExplorerViews.With(common.Labels{"action": "api-xpub-utxo"}).Inc()
 		} else {
-			utxo, err = s.api.GetAddressUtxo(r.URL.Path[i+1:], onlyConfirmed)
+			utxo, err = s.api.GetAddressUtxo(desc, onlyConfirmed)
 			s.metrics.ExplorerViews.With(common.Labels{"action": "api-address-utxo"}).Inc()
 		}
 		if err == nil && apiVersion == apiV1 {
@@ -1230,16 +1215,12 @@ func (s *PublicServer) apiBlock(r *http.Request, apiVersion int) (interface{}, e
 	return block, err
 }
 
-func (s *PublicServer) apiBlockFull(r *http.Request, apiVersion int) (interface{}, error) {
-	var block *bchain.BlockFullDetails
+func (s *PublicServer) apiBlockRaw(r *http.Request, apiVersion int) (interface{}, error) {
+	var block *api.BlockRaw
 	var err error
-	s.metrics.ExplorerViews.With(common.Labels{"action": "api-block"}).Inc()
+	s.metrics.ExplorerViews.With(common.Labels{"action": "api-block-raw"}).Inc()
 	if i := strings.LastIndexByte(r.URL.Path, '/'); i > 0 {
-
-		block, err = s.api.GetBlockFullDetails(r.URL.Path[i+1:])
-		// if err == nil && apiVersion == apiV1 {
-		// 	return s.api.BlockToV1(block), nil
-		// }
+		block, err = s.api.GetBlockRaw(r.URL.Path[i+1:])
 	}
 	return block, err
 }
@@ -1317,7 +1298,7 @@ func (s *PublicServer) apiTickers(r *http.Request, apiVersion int) (interface{},
 
 		timestamp, err := strconv.ParseInt(timestampString, 10, 64)
 		if err != nil {
-			return nil, api.NewAPIError("Parameter \"timestamp\" is not a valid Unix timestamp.", true)
+			return nil, api.NewAPIError("Parameter 'timestamp' is not a valid Unix timestamp.", true)
 		}
 
 		resultTickers, err := s.api.GetFiatRatesForTimestamps([]int64{timestamp}, currencies)
@@ -1332,6 +1313,38 @@ func (s *PublicServer) apiTickers(r *http.Request, apiVersion int) (interface{},
 	}
 	if err != nil {
 		return nil, err
+	}
+	return result, nil
+}
+
+// apiMultiTickers returns FiatRates ticker prices for the specified comma separated list of timestamps.
+func (s *PublicServer) apiMultiTickers(r *http.Request, apiVersion int) (interface{}, error) {
+	var result []db.ResultTickerAsString
+	var err error
+
+	currency := strings.ToLower(r.URL.Query().Get("currency"))
+	var currencies []string
+	if currency != "" {
+		currencies = []string{currency}
+	}
+	if timestampString := r.URL.Query().Get("timestamp"); timestampString != "" {
+		// Get tickers for specified timestamp
+		s.metrics.ExplorerViews.With(common.Labels{"action": "api-multi-tickers-date"}).Inc()
+		timestamps := strings.Split(timestampString, ",")
+		t := make([]int64, len(timestamps))
+		for i := range timestamps {
+			t[i], err = strconv.ParseInt(timestamps[i], 10, 64)
+			if err != nil {
+				return nil, api.NewAPIError("Parameter 'timestamp' does not contain a valid Unix timestamp.", true)
+			}
+		}
+		resultTickers, err := s.api.GetFiatRatesForTimestamps(t, currencies)
+		if err != nil {
+			return nil, err
+		}
+		result = resultTickers.Tickers
+	} else {
+		return nil, api.NewAPIError("Parameter 'timestamp' is missing.", true)
 	}
 	return result, nil
 }

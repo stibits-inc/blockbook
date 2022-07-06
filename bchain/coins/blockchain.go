@@ -24,6 +24,7 @@ import (
 	"github.com/trezor/blockbook/bchain/coins/digibyte"
 	"github.com/trezor/blockbook/bchain/coins/divi"
 	"github.com/trezor/blockbook/bchain/coins/dogecoin"
+	"github.com/trezor/blockbook/bchain/coins/ecash"
 	"github.com/trezor/blockbook/bchain/coins/eth"
 	"github.com/trezor/blockbook/bchain/coins/firo"
 	"github.com/trezor/blockbook/bchain/coins/flo"
@@ -97,6 +98,8 @@ func init() {
 	BlockChainFactories["Liquid"] = liquid.NewLiquidRPC
 	BlockChainFactories["Groestlcoin"] = grs.NewGroestlcoinRPC
 	BlockChainFactories["Groestlcoin Testnet"] = grs.NewGroestlcoinRPC
+	BlockChainFactories["Groestlcoin Signet"] = grs.NewGroestlcoinRPC
+	BlockChainFactories["Groestlcoin Regtest"] = grs.NewGroestlcoinRPC
 	BlockChainFactories["PIVX"] = pivx.NewPivXRPC
 	BlockChainFactories["PIVX Testnet"] = pivx.NewPivXRPC
 	BlockChainFactories["Polis"] = polis.NewPolisRPC
@@ -109,7 +112,7 @@ func init() {
 	BlockChainFactories["Qtum Testnet"] = qtum.NewQtumRPC
 	BlockChainFactories["NULS"] = nuls.NewNulsRPC
 	BlockChainFactories["VIPSTARCOIN"] = vipstarcoin.NewVIPSTARCOINRPC
-	BlockChainFactories["ZelCash"] = zec.NewZCashRPC
+	BlockChainFactories["Flux"] = zec.NewZCashRPC
 	BlockChainFactories["Ravencoin"] = ravencoin.NewRavencoinRPC
 	BlockChainFactories["Ravencoin Testnet"] = ravencoin.NewRavencoinRPC
 	BlockChainFactories["Ritocoin"] = ritocoin.NewRitocoinRPC
@@ -123,6 +126,7 @@ func init() {
 	BlockChainFactories["Omotenashicoin Testnet"] = omotenashicoin.NewOmotenashiCoinRPC
 	BlockChainFactories["BitZeny"] = bitzeny.NewBitZenyRPC
 	BlockChainFactories["Trezarcoin"] = trezarcoin.NewTrezarcoinRPC
+	BlockChainFactories["ECash"] = ecash.NewECashRPC
 }
 
 // GetCoinNameFromConfig gets coin name and coin shortcut from config file
@@ -258,14 +262,9 @@ func (c *blockChainWithMetrics) GetBlockInfo(hash string) (v *bchain.BlockInfo, 
 	return c.b.GetBlockInfo(hash)
 }
 
-func (c *blockChainWithMetrics) GetBlockFull(hash string) (v *bchain.Block, err error) {
-	defer func(s time.Time) { c.observeRPCLatency("GetBlockFull", s, err) }(time.Now())
-	return c.b.GetBlockFull(hash)
-}
-
-func (c *blockChainWithMetrics) GetBlockFullDetails(hash string) (v *bchain.BlockFullDetails, err error) {
-	defer func(s time.Time) { c.observeRPCLatency("GetBlockFullDetails", s, err) }(time.Now())
-	return c.b.GetBlockFullDetails(hash)
+func (c *blockChainWithMetrics) GetBlockRaw(hash string) (v string, err error) {
+	defer func(s time.Time) { c.observeRPCLatency("GetBlockRaw", s, err) }(time.Now())
+	return c.b.GetBlockRaw(hash)
 }
 
 func (c *blockChainWithMetrics) GetMempoolTransactions() (v []string, err error) {
