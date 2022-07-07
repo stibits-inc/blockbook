@@ -1557,57 +1557,6 @@ func (w *Worker) ListAssets() (*bchain.Assets, error) {
 	return assets, nil
 }
 
-func (w *Worker) GetBlocksDetails(page int, blocksOnPage int) (*BlocksDetails, error) {
-	start := time.Now()
-	page--
-	if page < 0 {
-		page = 0
-	}
-	b, err := w.chain.GetBestBlockHeight()
-	bestheight := int(b)
-	if err != nil {
-		return nil, errors.Annotatef(err, "GetBestBlock")
-	}
-	pg, from, to, page := computePaging(bestheight+1, page, blocksOnPage)
-	r := &BlocksDetails{Paging: pg}
-	r.Blocks = make([]BlockDetails, to-from)
-	for i := from; i < to; i++ {
-		bhash, err := w.chain.GetBlockHash(uint32(bestheight - i))
-		if err != nil {
-			return nil, err
-		}
-		bfi, err1 := w.chain.GetBlockFull(bhash)
-
-		if bfi == nil {
-			r.Blocks = r.Blocks[:i]
-			break
-		}
-
-		if err1 != nil {
-			return nil, err1
-		}
-		movement := big.NewInt(0)
-		for j := 0; j < len(bfi.Txs); j++ {
-			vout := big.NewInt(0)
-			for v := 0; v < len(bfi.Txs[j].Vout); v++ {
-				vout = vout.Add(vout, &bfi.Txs[j].Vout[v].ValueSat)
-			}
-			movement = movement.Add(movement, vout)
-		}
-		r.Blocks[i-from] = BlockDetails{
-			Height:        bfi.Height,
-			Time:          bfi.Time,
-			Hash:          bfi.Hash,
-			Txs:           uint32(len(bfi.Txs)),
-			Confirmations: bfi.Confirmations,
-			Size:          bfi.Size,
-			Movement:      *movement,
-		}
-	}
-	glog.Info("GetBlocks page ", page, ", ", time.Since(start))
-	return r, nil
-}
-
 // removeEmpty removes empty strings from a slice
 func removeEmpty(stringSlice []string) []string {
 	var ret []string
