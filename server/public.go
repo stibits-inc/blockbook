@@ -164,8 +164,8 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 		serveMux.HandleFunc(path+"api/v1/tx/", s.jsonHandler(s.apiTx, apiV1))
 		serveMux.HandleFunc(path+"api/v1/address/", s.jsonHandler(s.apiAddress, apiV1))
 		serveMux.HandleFunc(path+"api/v1/utxo/", s.jsonHandler(s.apiUtxo, apiV1))
+
 		serveMux.HandleFunc(path+"api/v1/block/", s.jsonHandler(s.apiBlock, apiV1))
-		serveMux.HandleFunc(path+"api/v1/blocks/", s.jsonHandler(s.apiBlocksDetails, apiV1))
 		serveMux.HandleFunc(path+"api/v1/sendtx/", s.jsonHandler(s.apiSendTx, apiV1))
 		serveMux.HandleFunc(path+"api/v1/estimatefee/", s.jsonHandler(s.apiEstimateFee, apiV1))
 	}
@@ -199,8 +199,6 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 	serveMux.HandleFunc(path+"api/v2/gasprice/", s.jsonHandler(s.apiGasPrice, apiV2))
 	serveMux.HandleFunc(path+"api/v2/estimategas", s.jsonHandler(s.apiEstimateGas, apiV2))
 	serveMux.HandleFunc(path+"api/v2/assets/", s.jsonHandler(s.apiAssets, apiV2))
-
-	serveMux.HandleFunc(path+"api/v3/block/", s.jsonHandler(s.apiBlockFull, apiV2))
 
 	// socket.io interface
 	serveMux.Handle(path+"socket.io/", s.socketio.GetHandler())
@@ -1157,19 +1155,6 @@ func (s *PublicServer) apiBalanceHistory(r *http.Request, apiVersion int) (inter
 	return history, err
 }
 
-func (s *PublicServer) apiBlocks(r *http.Request, apiVersion int) (interface{}, error) {
-	var blocks *api.Blocks
-	var err error
-	s.metrics.ExplorerViews.With(common.Labels{"action": "api-blocks"}).Inc()
-	if i := strings.LastIndexByte(r.URL.Path, '/'); i > 0 {
-		page, ec := strconv.Atoi(r.URL.Query().Get("page"))
-		if ec != nil {
-			page = 0
-		}
-		blocks, err = s.api.GetBlocks(page, blocksInAPI)
-	}
-	return blocks, err
-}
 
 func (s *PublicServer) apiAssets(r *http.Request, apiVersion int) (interface{}, error) {
 	var assets *bchain.Assets
@@ -1178,24 +1163,6 @@ func (s *PublicServer) apiAssets(r *http.Request, apiVersion int) (interface{}, 
 
 	assets, err = s.api.ListAssets()
 	return assets, err
-}
-
-func (s *PublicServer) apiBlocksDetails(r *http.Request, apiVersion int) (interface{}, error) {
-	var blocks *api.BlocksDetails
-	var err error
-	s.metrics.ExplorerViews.With(common.Labels{"action": "api-blocks"}).Inc()
-	if i := strings.LastIndexByte(r.URL.Path, '/'); i > 0 {
-		page, ec := strconv.Atoi(r.URL.Query().Get("page"))
-		if ec != nil {
-			page = 0
-		}
-		itemsInAPI, erb := strconv.Atoi(r.URL.Query().Get("itemsInAPI"))
-		if erb != nil {
-			itemsInAPI = 30
-		}
-		blocks, err = s.api.GetBlocksDetails(page, itemsInAPI)
-	}
-	return blocks, err
 }
 
 func (s *PublicServer) apiBlock(r *http.Request, apiVersion int) (interface{}, error) {

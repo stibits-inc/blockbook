@@ -440,7 +440,7 @@ type BlockFull struct {
 	BlockInfo
 	TxCount      int         `json:"txCount"`
 	Transactions []bchain.Tx `json:"txs,omitempty"`
-
+}
 	// BlockRaw contains raw block in hex
 type BlockRaw struct {
 	Hex string `json:"hex"`
