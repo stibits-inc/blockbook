@@ -734,7 +734,7 @@ func TestParseXpubDescriptors(t *testing.T) {
 			want: &bchain.XpubDescriptor{
 				XpubDescriptor: "tpubDC88gkaZi5HvJGxGDNLADkvtdpni3mLmx6vr2KnXmWMG8zfkBRggsxHVBkUpgcwPe2KKpkyvTJCdXHb1UHEWE64vczyyPQfHr1skBcsRedN",
 				Xpub:           "tpubDC88gkaZi5HvJGxGDNLADkvtdpni3mLmx6vr2KnXmWMG8zfkBRggsxHVBkUpgcwPe2KKpkyvTJCdXHb1UHEWE64vczyyPQfHr1skBcsRedN",
-				Type:           bchain.P2PKH,
+				Type:           bchain.P2WPKH,
 				Bip:            "44",
 				ChangeIndexes:  []uint32{0, 1},
 			},
@@ -794,7 +794,7 @@ func TestParseXpubDescriptors(t *testing.T) {
 			want: &bchain.XpubDescriptor{
 				XpubDescriptor: "xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj",
 				Xpub:           "xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj",
-				Type:           bchain.P2PKH,
+				Type:           bchain.P2WPKH,
 				Bip:            "44",
 				ChangeIndexes:  []uint32{0, 1},
 			},
@@ -854,7 +854,7 @@ func TestParseXpubDescriptors(t *testing.T) {
 			want: &bchain.XpubDescriptor{
 				XpubDescriptor: "pkh(xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ)",
 				Xpub:           "xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ",
-				Type:           bchain.P2PKH,
+				Type:           bchain.P2WPKH,
 				Bip:            "44",
 				ChangeIndexes:  []uint32{0, 1},
 			},
@@ -976,7 +976,7 @@ func TestDeriveAddressDescriptors(t *testing.T) {
 				indexes: []uint32{0, 1234},
 				parser:  btcMainParser,
 			},
-			want: []string{"1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA", "1P9w11dXAmG3QBjKLAvCsek8izs1iR2iFi"},
+			want: []string{"bc1qmxrw6qdh5g3ztfcwm0et5l8mvws4eva24kmp8m", "bc1q7vpjczdagy62srqzy5uytzk5kmzgrdc85ql57s"},
 		},
 		{
 			name: "m/49'/0'/0'",
