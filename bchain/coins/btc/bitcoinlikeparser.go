@@ -412,10 +412,15 @@ func (p *BitcoinLikeParser) xpubDescriptorFromXpub(xpub string) (*bchain.XpubDes
 		descriptor.Type = bchain.P2WPKH
 		descriptor.Bip = "84"
 	} else {
-		descriptor.Type = bchain.P2PKH
-		descriptor.Bip = "44"
 		if p.Slip44 == 0 { //Stibits use BTC xpub with bip44 & P2WPKH
 			descriptor.Type = bchain.P2WPKH
+			descriptor.Bip = "44"
+		} else if p.Slip44 == 2 { //Stibits use LTC xpub with bip84 & P2WPKH
+			descriptor.Type = bchain.P2WPKH
+			descriptor.Bip = "84"
+		} else {
+			descriptor.Type = bchain.P2PKH
+			descriptor.Bip = "44"
 		}
 	}
 	descriptor.ChangeIndexes = []uint32{0, 1}
@@ -455,10 +460,15 @@ func (p *BitcoinLikeParser) ParseXpub(xpub string) (*bchain.XpubDescriptor, erro
 		m := match[typeSubexpIndex]
 		switch m {
 		case "pkh":
-			descriptor.Type = bchain.P2PKH
-			descriptor.Bip = "44"
 			if p.Slip44 == 0 { //Stibits use BTC xpub with bip44 & P2WPKH
 				descriptor.Type = bchain.P2WPKH
+				descriptor.Bip = "44"
+			} else if p.Slip44 == 2 { //Stibits use LTC xpub with bip84 & P2WPKH
+				descriptor.Type = bchain.P2WPKH
+				descriptor.Bip = "84"
+			} else {
+				descriptor.Type = bchain.P2PKH
+				descriptor.Bip = "44"
 			}
 		case "sh(wpkh":
 			descriptor.Type = bchain.P2SHWPKH
