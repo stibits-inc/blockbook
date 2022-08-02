@@ -8,7 +8,7 @@ import (
 	"os"
 	"reflect"
 	"testing"
-
+	
 	"github.com/martinboehm/btcutil/chaincfg"
 	"github.com/trezor/blockbook/bchain"
 	"github.com/trezor/blockbook/bchain/coins/btc"
@@ -114,40 +114,86 @@ func TestGetAddrDescFromVout(t *testing.T) {
 }
 
 func TestGetAddressesFromAddrDesc(t *testing.T) {
+	type args struct {
+			script string
+	}
+	tests := []struct {
+			name    string
+			args    args
+			want    []string
+			want2   bool
+			wantErr bool
+	}{
+			{
+					name:    "P2PKH",
+					args:    args{script: "76a914022469968d225744fdfe1f66eefd49e65edf15fd88acc01572766e740842414c415445524f241b0f000000000075"},
+					want:    []string{"R9UX3t56YiDQuxZZBQVztXgPjs7a1fy7xo"},
+					want2:   true,
+					wantErr: false,
+			},
+			/*{
+					name:    "P2SH",
+					args:    args{script: "a914a57bc3da6fdf76c9c515f94f429b9df16cdf6bac87c01a72766e710a2453544f47454e4955530010a5d4e800000000010075"},
+					want:    []string{"2N8LDkHLgawVfNNqAdrbnaz3efriREorso8"},
+					want2:   true,
+					wantErr: false,
+			},*/
+	}
+
+	parser := NewRavencoinParser(GetChainParams("main"), &btc.Configuration{})
+
+	for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+					b, _ := hex.DecodeString(tt.args.script)
+					got, got2, err := parser.GetAddressesFromAddrDesc(b)
+					if (err != nil) != tt.wantErr {
+							t.Errorf("GetAddressesFromAddrDesc() error = %v, wantErr %v", err, tt.wantErr)
+							return
+					}
+					if !reflect.DeepEqual(got, tt.want) {
+							t.Errorf("GetAddressesFromAddrDesc() = %v, want %v", got, tt.want)
+					}
+					if !reflect.DeepEqual(got2, tt.want2) {
+							t.Errorf("GetAddressesFromAddrDesc() = %v, want %v", got2, tt.want2)
+					}
+			})
+	}
+}
+func TestGetAssetFromScriptPubKey(t *testing.T) {
         type args struct {
                 script string
         }
         tests := []struct {
                 name    string
                 args    args
-                want    []string
+                want    string
                 want2   bool
-                wantErr bool
         }{
                 {
                         name:    "P2PKH",
                         args:    args{script: "76a914022469968d225744fdfe1f66eefd49e65edf15fd88acc01572766e740842414c415445524f241b0f000000000075"},
-                        want:    []string{"R9UX3t56YiDQuxZZBQVztXgPjs7a1fy7xo"},
+                        want:    string("BALATERO"),
                         want2:   true,
-                        wantErr: false,
                 },
+				{
+						name:    "P2SH",
+						args:    args{script: "a914a57bc3da6fdf76c9c515f94f429b9df16cdf6bac87c01772766e740a2453544f47454e495553002fafcee800000075"},
+						want:    string("$STOGENIUS"),
+						want2:   true,
+				},
         }
 
-        parser := NewRavencoinParser(GetChainParams("main"), &btc.Configuration{})
+        parser := NewRavencoinParser(GetChainParams("test"), &btc.Configuration{})
 
         for _, tt := range tests {
                 t.Run(tt.name, func(t *testing.T) {
                         b, _ := hex.DecodeString(tt.args.script)
-                        got, got2, err := parser.GetAddressesFromAddrDesc(b)
-                        if (err != nil) != tt.wantErr {
-                                t.Errorf("GetAddressesFromAddrDesc() error = %v, wantErr %v", err, tt.wantErr)
-                                return
-                        }
-                        if !reflect.DeepEqual(got, tt.want) {
-                                t.Errorf("GetAddressesFromAddrDesc() = %v, want %v", got, tt.want)
+                        got, got2 := parser.GetAssetFromScriptPubKey(b)
+                        if !reflect.DeepEqual(got.Name, tt.want) {
+                                t.Errorf("GetAssetFromScriptPubKey() = %v, want %v", got.Name, tt.want)//TODO Replace got.Name
                         }
                         if !reflect.DeepEqual(got2, tt.want2) {
-                                t.Errorf("GetAddressesFromAddrDesc() = %v, want %v", got2, tt.want2)
+                                t.Errorf("GetAssetFromScriptPubKey() = %v, want %v", got2, tt.want2)
                         }
                 })
         }

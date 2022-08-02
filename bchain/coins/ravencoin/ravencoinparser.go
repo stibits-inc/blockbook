@@ -96,6 +96,29 @@ func AssetNameScriptOffset(script []byte) int {
 			if idx > 0 {
 				nStartingIndex = idx + 1
 			}
+		}else if script[23] == 0xc0 { // OP_RVN_ASSET is always in the 25 index of the script if it exists
+			idx := -1
+
+			if script[25] == 114 { // Check to see if RVN starts at 27 ( this->size() < 105)
+				if script[26] == 118 {
+					if script[27] == 110 {
+						idx = 28
+					}
+				}
+
+			} else {
+				if script[26] == 114 { // Check to see if RVN starts at 28 ( this->size() >= 105)
+					if script[27] == 118 {
+						if script[28] == 110 {
+							idx = 29
+						}
+					}
+				}
+			}
+
+			if idx > 0 {
+				nStartingIndex = idx + 1
+			}
 		}
 	}
 
@@ -139,7 +162,9 @@ func (p *RavencoinParser) GetAssetFromScriptPubKey(ad []byte) (bchain.Asset, boo
 	isAsset = false
 	l := len(ad)
 	if l > 25 {
-		if ad[0] == 0x76 && ad[1] == 0xa9 && ad[2] == 0x14 && ad[l-1] == 0x75 {
+		if ((ad[0] == 0x76 && ad[1] == 0xa9 && ad[2] == 0x14) || 
+		    (ad[0] == 0xa9 && ad[1] == 0x14 && ad[22] == 0x87)) && 
+		     ad[l-1] == 0x75 {
 			nStartingIndex := AssetNameScriptOffset(ad)
 			assetType := uint(0)
 			if(nStartingIndex > 0){
@@ -164,6 +189,7 @@ func (p *RavencoinParser) GetAssetFromScriptPubKey(ad []byte) (bchain.Asset, boo
 			}
 			isAsset = true
 		}
+		
 	}
 
 	return asset, isAsset
@@ -179,7 +205,9 @@ func (p *RavencoinParser) GetAssetFromAddressDesc(output *bchain.Vout) (bchain.A
 
 	l := len(ad)
 	if l > 25 {
-		if ad[0] == 0x76 && ad[1] == 0xa9 && ad[2] == 0x14 && ad[l-1] == 0x75 {
+		if ((ad[0] == 0x76 && ad[1] == 0xa9 && ad[2] == 0x14) || 
+		    (ad[0] == 0xa9 && ad[1] == 0x14 && ad[22] == 0x87)) && 
+		     ad[l-1] == 0x75 {
 			return p.GetAssetFromScriptPubKey(ad)
 		}
 	}
@@ -198,7 +226,9 @@ func (p *RavencoinParser) GetAddrDescFromVout(output *bchain.Vout) (bchain.Addre
 	if l > 25 {
 		if ad[0] == 0x76 && ad[1] == 0xa9 && ad[2] == 0x14 && ad[l-1] == 0x75 {
 			add := ad[0:25]
-
+			return add, err
+		} else if ad[0] == 0xa9 && ad[1] == 0x14 && ad[22] == 0x87 && ad[l-1] == 0x75 {
+			add := ad[0:23]
 			return add, err
 		}
 	}
@@ -217,6 +247,8 @@ func (p *RavencoinParser) GetAddressesFromAddrDesc(addrDesc bchain.AddressDescri
 	if l > 25 {
 		if addrDesc[0] == 0x76 && addrDesc[1] == 0xa9 && addrDesc[2] == 0x14 && addrDesc[l-1] == 0x75 {
 			addressDesc = addrDesc[0:25]
+		}else if addrDesc[0] == 0xa9 && addrDesc[1] == 0x14 && addrDesc[22] == 0x87 && addrDesc[l-1] == 0x75 {
+			addressDesc = addrDesc[0:23]
 		}
 	}
 
