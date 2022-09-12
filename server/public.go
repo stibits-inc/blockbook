@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -56,6 +57,10 @@ type PublicServer struct {
 	is               *common.InternalState
 	templates        []*template.Template
 	debug            bool
+}
+
+type XpubMsg struct {
+    Xpubs []string `json:"xpubs"`
 }
 
 // NewPublicServer creates new public server http interface to blockbook and returns its handle
@@ -1028,28 +1033,39 @@ func (s *PublicServer) apiAddress(r *http.Request, apiVersion int) (interface{},
 }
 
 func (s *PublicServer) apiXpub(r *http.Request, apiVersion int) (interface{}, error) {
-	var xpub string
+	var xpub []string
+	var pk XpubMsg
+
 	if r.Method == http.MethodPost {
 		data, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			return nil, api.NewAPIError("Missing data", true)
 		}
-		xpub = string(data)
+
+		err = json.NewDecoder(bytes.NewBuffer(data)).Decode(&pk)
+		if err != nil {
+			return nil, api.NewAPIError("Missing json data", true)
+		}
+
+		xpub = pk.Xpubs
+		
 	} else {
 		i := strings.LastIndex(r.URL.Path, "xpub/")
 		if i > 0 {
-			xpub = r.URL.Path[i+5:]
+			xpub = append(xpub, r.URL.Path[i+5:])
 		}
 	}
-
-	if len(xpub) == 0 {
+	
+	if len(xpub[0]) == 0{ //TODO MEHDI : MULTISIG
 		return nil, api.NewAPIError("Missing xpub", true)
 	}
+
 	var address *api.Address
 	var err error
 	s.metrics.ExplorerViews.With(common.Labels{"action": "api-xpub"}).Inc()
 	page, pageSize, details, filter, _, gap := s.getAddressQueryParams(r, api.AccountDetailsTxidHistory, txsInAPI)
-	address, err = s.api.GetXpubAddress(xpub, page, pageSize, details, filter, gap)
+	//address, err = s.api.GetXpubAddress(xpub, page, pageSize, details, filter, gap)
+	address, err = s.api.GetXpubMultiSigAddress(xpub, page, pageSize, details, filter, gap) //TODO MEHDI : MULTISIG
 	if err == nil && apiVersion == apiV1 {
 		return s.api.AddressToV1(address), nil
 	}

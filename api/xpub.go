@@ -201,7 +201,7 @@ func (w *Worker) xpubDerivedAddressBalance(data *xpubData, ad *xpubAddress) (boo
 	return false, nil
 }
 
-func (w *Worker) xpubScanAddresses(xd *bchain.XpubDescriptor, data *xpubData, addresses []xpubAddress, gap int, change uint32, minDerivedIndex int, fork bool) (int, []xpubAddress, error) {
+func (w *Worker) xpubScanAddresses(xd []*bchain.XpubDescriptor, data *xpubData, addresses []xpubAddress, gap int, change uint32, minDerivedIndex int, fork bool) (int, []xpubAddress, error) {
 	// rescan known addresses
 	lastUsed := 0
 	for i := range addresses {
@@ -229,7 +229,7 @@ func (w *Worker) xpubScanAddresses(xd *bchain.XpubDescriptor, data *xpubData, ad
 		if to < minDerivedIndex {
 			to = minDerivedIndex
 		}
-		descriptors, err := w.chainParser.DeriveAddressDescriptorsFromTo(xd, change, uint32(from), uint32(to))
+		descriptors, err := w.chainParser.DeriveAddressDescriptorsMultiSigFromTo(xd, change, uint32(from), uint32(to))
 		if err != nil {
 			return 0, nil, err
 		}
@@ -362,8 +362,11 @@ func (w *Worker) getXpubData(xd *bchain.XpubDescriptor, page int, txsOnPage int,
 			data.sentSat = *new(big.Int)
 			data.txCountEstimate = 0
 			var minDerivedIndex int
+			var xd_array []*bchain.XpubDescriptor //TODO MEHDI : MULTISIG xd_array 
+			xd_array = append(xd_array, xd)
 			for i, change := range xd.ChangeIndexes {
-				minDerivedIndex, data.addresses[i], err = w.xpubScanAddresses(xd, &data, data.addresses[i], gap, change, minDerivedIndex, fork)
+				
+				minDerivedIndex, data.addresses[i], err = w.xpubScanAddresses(xd_array, &data, data.addresses[i], gap, change, minDerivedIndex, fork) //TODO MEHDI : MULTISIG xd_array 
 				if err != nil {
 					return nil, 0, inCache, err
 				}
@@ -382,6 +385,88 @@ func (w *Worker) getXpubData(xd *bchain.XpubDescriptor, page int, txsOnPage int,
 	data.accessed = time.Now().Unix()
 	cachedXpubsMux.Lock()
 	cachedXpubs[xd.XpubDescriptor] = data
+	cachedXpubsMux.Unlock()
+	return &data, bestheight, inCache, nil
+}
+
+func (w *Worker) getXpubDataMultiSig(xd []*bchain.XpubDescriptor, page int, txsOnPage int, option AccountDetails, filter *AddressFilter, gap int) (*xpubData, uint32, bool, error) {
+	if w.chainType != bchain.ChainBitcoinType &&  w.chainType != bchain.ChainRavencoinType {
+		return nil, 0, false, ErrUnsupportedXpub
+	}
+	var (
+		err        error
+		bestheight uint32
+		besthash   string
+	)
+	if gap <= 0 {
+		gap = defaultAddressesGap
+	} else if gap > maxAddressesGap {
+		// limit the maximum gap to protect against unreasonably big values that could cause high load of the server
+		gap = maxAddressesGap
+	}
+	// gap is increased one as there must be gap of empty addresses before the derivation is stopped
+	gap++
+	var processedHash string
+	cachedXpubsMux.Lock()
+	data, inCache := cachedXpubs[xd[0].XpubDescriptor]//TODO MEHDI : MILTISIG xd[0]
+	cachedXpubsMux.Unlock()
+	// to load all data for xpub may take some time, do it in a loop to process a possible new block
+	for {
+		bestheight, besthash, err = w.db.GetBestBlock()
+		if err != nil {
+			return nil, 0, inCache, errors.Annotatef(err, "GetBestBlock")
+		}
+		if besthash == processedHash {
+			break
+		}
+		fork := false
+		if !inCache || data.gap != gap {
+			data = xpubData{
+				gap:       gap,
+				addresses: make([][]xpubAddress, len(xd[0].ChangeIndexes)),//TODO MEHDI : MILTISIG xd[0]
+			}
+			data.basePath, err = w.chainParser.DerivationBasePath(xd[0])//TODO MEHDI : MILTISIG xd[0]
+			if err != nil {
+				return nil, 0, inCache, err
+			}
+		} else {
+			hash, err := w.db.GetBlockHash(data.dataHeight)
+			if err != nil {
+				return nil, 0, inCache, err
+			}
+			if hash != data.dataHash {
+				// in case of for reset all cached data
+				fork = true
+			}
+		}
+		processedHash = besthash
+		if data.dataHeight < bestheight || fork {
+			data.dataHeight = bestheight
+			data.dataHash = besthash
+			data.balanceSat = *new(big.Int)
+			data.sentSat = *new(big.Int)
+			data.txCountEstimate = 0
+			var minDerivedIndex int
+			for i, change := range xd[0].ChangeIndexes { //TODO MEHDI : MILTISIG xd[0]
+				minDerivedIndex, data.addresses[i], err = w.xpubScanAddresses(xd, &data, data.addresses[i], gap, change, minDerivedIndex, fork)
+				if err != nil {
+					return nil, 0, inCache, err
+				}
+			}
+		}
+		if option >= AccountDetailsTxidHistory {
+			for _, da := range data.addresses {
+				for i := range da {
+					if err = w.xpubCheckAndLoadTxids(&da[i], filter, bestheight, (page+1)*txsOnPage); err != nil {
+						return nil, 0, inCache, err
+					}
+				}
+			}
+		}
+	}
+	data.accessed = time.Now().Unix()
+	cachedXpubsMux.Lock()
+	//cachedXpubs[xd[0].XpubDescriptor] = data //TODO MEHDI : MILTISIG xd[0] //TODO MEHDI : Avoid xpub cache
 	cachedXpubsMux.Unlock()
 	return &data, bestheight, inCache, nil
 }
@@ -611,6 +696,243 @@ func (w *Worker) GetXpubAddress(xpub string, page int, txsOnPage int, option Acc
 		XPubAddresses:         xpubAddresses,
 	}
 	glog.Info("GetXpubAddress ", xpub[:xpubLogPrefix], ", cache ", inCache, ", ", txCount, " txs, ", time.Since(start))
+	return &addr, nil
+}
+
+
+// GetXpubMultiSigAddress computes address value and gets transactions for given address
+func (w *Worker) GetXpubMultiSigAddress(xpub []string, page int, txsOnPage int, option AccountDetails, filter *AddressFilter, gap int) (*Address, error) {
+	start := time.Now()
+	page--
+	if page < 0 {
+		page = 0
+	}
+	type mempoolMap struct {
+		tx          *Tx
+		inputOutput byte
+	}
+	var (
+		txc            xpubTxids
+		txmMap         map[string]*Tx
+		txCount        int
+		txs            []*Tx
+		txids          []string
+		pg             Paging
+		filtered       bool
+		uBalSat        big.Int
+		unconfirmedTxs int
+	)
+    glog.Info("getXpubDataMultiSig start")
+	var xd [] *bchain.XpubDescriptor
+	for i := range xpub {
+		xdesc, err := w.chainParser.ParseXpub(xpub[i])
+		if err != nil {
+			return nil, err
+		}
+		xd = append(xd, xdesc)
+	}
+
+	data, bestheight, inCache, err := w.getXpubDataMultiSig(xd, page, txsOnPage, option, filter, gap)
+	if err != nil {
+		return nil, err
+	}
+
+	glog.Info("getXpubDataMultiSig end")
+	// setup filtering of txids
+	var txidFilter func(txid *xpubTxid, ad *xpubAddress) bool
+	if !(filter.FromHeight == 0 && filter.ToHeight == 0 && filter.Vout == AddressFilterVoutOff) {
+		toHeight := maxUint32
+		if filter.ToHeight != 0 {
+			toHeight = filter.ToHeight
+		}
+		txidFilter = func(txid *xpubTxid, ad *xpubAddress) bool {
+			if txid.height < filter.FromHeight || txid.height > toHeight {
+				return false
+			}
+			if filter.Vout != AddressFilterVoutOff {
+				if filter.Vout == AddressFilterVoutInputs && txid.inputOutput&txInput == 0 ||
+					filter.Vout == AddressFilterVoutOutputs && txid.inputOutput&txOutput == 0 {
+					return false
+				}
+			}
+			return true
+		}
+		filtered = true
+	}
+
+	selfAddrDesc := make(map[string]struct{})
+	for _, da := range data.addresses {
+		for i := range da {
+			add, _, err := w.chainParser.GetAddressesFromAddrDesc(da[i].addrDesc)
+			if err == nil {
+				selfAddrDesc[string(add[0])] = struct{}{}
+			}
+		}
+	}
+
+	// process mempool, only if ToHeight is not specified
+	if filter.ToHeight == 0 && !filter.OnlyConfirmed {
+		txmMap = make(map[string]*Tx)
+		mempoolEntries := make(bchain.MempoolTxidEntries, 0)
+		for _, da := range data.addresses {
+			for i := range da {
+				ad := &da[i]
+				newTxids, _, err := w.xpubGetAddressTxids(ad.addrDesc, true, 0, 0, maxInt)
+				if err != nil {
+					return nil, err
+				}
+				for _, txid := range newTxids {
+					// the same tx can have multiple addresses from the same xpub, get it from backend it only once
+					tx, foundTx := txmMap[txid.txid]
+					if !foundTx {
+						tx, err = w.GetTransaction(txid.txid, option, false, true, selfAddrDesc)
+						// mempool transaction may fail
+						if err != nil || tx == nil {
+							glog.Warning("GetTransaction in mempool: ", err)
+							continue
+						}
+						txmMap[txid.txid] = tx
+					}
+					// skip already confirmed txs, mempool may be out of sync
+					if tx.Confirmations == 0 {
+						if !foundTx {
+							unconfirmedTxs++
+						}
+						uBalSat.Add(&uBalSat, tx.getAddrVoutValue(ad.addrDesc))
+						uBalSat.Sub(&uBalSat, tx.getAddrVinValue(ad.addrDesc))
+						// mempool txs are returned only on the first page, uniquely and filtered
+						if page == 0 && !foundTx /* && (txidFilter == nil || txidFilter(&txid, ad))*/ {
+							mempoolEntries = append(mempoolEntries, bchain.MempoolTxidEntry{Txid: txid.txid, Time: uint32(tx.Blocktime)})
+						}
+					}
+				}
+			}
+		}
+		// sort the entries by time descending
+		sort.Sort(mempoolEntries)
+		for _, entry := range mempoolEntries {
+			if option == AccountDetailsTxidHistory {
+				txids = append(txids, entry.Txid)
+			} else if option >= AccountDetailsTxHistoryLight {
+				txs = append(txs, txmMap[entry.Txid])
+			}
+		}
+	}
+	if option >= AccountDetailsTxidHistory {
+		txcMap := make(map[string]bool)
+		txc = make(xpubTxids, 0, 32)
+		for _, da := range data.addresses {
+			for i := range da {
+				ad := &da[i]
+				for _, txid := range ad.txids {
+					added, foundTx := txcMap[txid.txid]
+					// count txs regardless of filter but only once
+					if !foundTx {
+						txCount++
+					}
+					// add tx only once
+					if !added {
+						add := txidFilter == nil || txidFilter(&txid, ad)
+						txcMap[txid.txid] = add
+						if add {
+							txc = append(txc, txid)
+						}
+					}
+				}
+			}
+		}
+		sort.Stable(txc)
+		txCount = len(txcMap)
+		totalResults := txCount
+		if filtered {
+			totalResults = -1
+		}
+		var from, to int
+		pg, from, to, page = computePaging(len(txc), page, txsOnPage)
+		if pg.Page <= pg.TotalPages {
+			if len(txc) >= txsOnPage {
+				if totalResults < 0 {
+					pg.TotalPages = -1
+				} else {
+					pg, _, _, _ = computePaging(totalResults, page, txsOnPage)
+				}
+			}
+			// get confirmed transactions
+			for i := from; i < to; i++ {
+				xpubTxid := &txc[i]
+				if option == AccountDetailsTxidHistory {
+					txids = append(txids, xpubTxid.txid)
+				} else {
+					tx, err := w.txFromTxid(xpubTxid.txid, bestheight, option, nil, selfAddrDesc)
+					if err != nil {
+						return nil, err
+					}
+					txs = append(txs, tx)
+				}
+			}
+		}
+
+	} else {
+		txCount = int(data.txCountEstimate)
+	}
+	usedTokens := 0
+	var tokens []Token
+	var xpubAddresses map[string]struct{}
+	if option > AccountDetailsBasic {
+		tokens = make([]Token, 0, 4)
+		xpubAddresses = make(map[string]struct{})
+	}
+	var unusedExtAddresse, unusedIntAddresse string
+	for ci, da := range data.addresses {
+		isUnusedAddresse := false
+		for i := range da {
+			ad := &da[i]
+			if ad.balance != nil {
+				usedTokens++
+			}
+			if option > AccountDetailsBasic {
+				token := w.tokenFromXpubAddress(data, ad, ci, i, option)
+				if ad.balance == nil && isUnusedAddresse == false {
+					isUnusedAddresse = true
+					if filter.TokensToReturn == TokensToReturnUnused {
+						if ci == 0 {
+							unusedExtAddresse = token.Name
+						} else if ci == 1 {
+							unusedIntAddresse = token.Name
+						}
+					}
+					
+				}
+				if filter.TokensToReturn == TokensToReturnDerived ||
+					filter.TokensToReturn == TokensToReturnUsed && ad.balance != nil ||
+					filter.TokensToReturn == TokensToReturnNonzeroBalance && ad.balance != nil && !IsZeroBigInt(&ad.balance.BalanceSat) {
+					tokens = append(tokens, token)
+				}
+				xpubAddresses[token.Name] = struct{}{}
+			}
+		}
+	}
+	setIsOwnAddresses(txs, xpubAddresses)
+	var totalReceived big.Int
+	totalReceived.Add(&data.balanceSat, &data.sentSat)
+	addr := Address{
+		Paging:                pg,
+		AddrStr:               xpub[0], //TODO MEHDI : MULTISIG xpub[0]
+		BalanceSat:            (*Amount)(&data.balanceSat),
+		TotalReceivedSat:      (*Amount)(&totalReceived),
+		TotalSentSat:          (*Amount)(&data.sentSat),
+		Txs:                   txCount,
+		UnconfirmedBalanceSat: (*Amount)(&uBalSat),
+		UnconfirmedTxs:        unconfirmedTxs,
+		Transactions:          txs,
+		Txids:                 txids,
+		UnusedExtAddr:         unusedExtAddresse,
+		UnusedIntAddr:         unusedIntAddresse,
+		UsedTokens:            usedTokens,
+		Tokens:                tokens,
+		XPubAddresses:         xpubAddresses,
+	}
+	glog.Info("GetXpubAddress ", xpub[0][:xpubLogPrefix], ", cache ", inCache, ", ", txCount, " txs, ", time.Since(start))  //TODO MEHDI : MULTISIG xpub[0]
 	return &addr, nil
 }
 

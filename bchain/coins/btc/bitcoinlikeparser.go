@@ -397,6 +397,62 @@ func (p *BitcoinLikeParser) addrDescFromExtKey(extKey *hdkeychain.ExtendedKey, d
 	return txscript.PayToAddrScript(a)
 }
 
+func (p *BitcoinLikeParser) addrDescFromExtKeyMultiSig(extKey []*hdkeychain.ExtendedKey, descriptor []*bchain.XpubDescriptor) (bchain.AddressDescriptor, error) {
+	var a btcutil.Address
+	var err error
+	switch descriptor[0].Type {//TODO MEHDI MULTISIG
+	case bchain.P2PKH:
+		if len(descriptor) == 1 {
+			a, err = extKey[0].Address(p.Params)
+		} else {
+			// P2MSH redeemScript <OP_m> <len_1 pubKey_1 ... len_n pubKey_n> <OP_n> <OP_CHECKMULTISIG>
+			redeemScriptLen := 3 //<OP_m> <OP_n> <OP_CHECKMULTISIG>
+			for i := 0; i < len(extKey); i++ {
+				redeemScriptLen = redeemScriptLen + len(extKey[i].PubKeyBytes()) + 1 // add extKey_len and len of extKey 
+			}
+			redeemScript := make([]byte, redeemScriptLen)
+
+			off := 0
+			redeemScript[off] = 0x50 + 1 //<OP_m> TODO MEHDI : includ in params  <OP_1 = 0x51, OP_2 = 0x52, ....>
+			off = off + 1
+
+			for i := 0; i < len(extKey); i++ {
+				pubkeyBytes := extKey[i].PubKeyBytes()
+				redeemScript[off] = byte(len(pubkeyBytes))
+				off = off + 1
+				copy(redeemScript[off:], pubkeyBytes)
+				off = off + len(pubkeyBytes)
+			}
+
+			redeemScript[redeemScriptLen - 2]= 0x50 + byte(len(extKey)) //<OP_n>
+			redeemScript[redeemScriptLen - 1] = 174 // OP_CHECKMULTISIG = 174
+
+			hash := btcutil.Hash160(redeemScript)
+			a, err = btcutil.NewAddressScriptHashFromHash(hash, p.Params)
+			glog.Infof("addrDescFromExtKeyMultiSig Address msg  = %v",  a)
+		}
+	case bchain.P2SHWPKH:
+		// redeemScript <witness version: OP_0><len pubKeyHash: 20><20-byte-pubKeyHash>
+		pubKeyHash := btcutil.Hash160(extKey[0].PubKeyBytes())
+		redeemScript := make([]byte, len(pubKeyHash)+2)
+		redeemScript[0] = 0
+		redeemScript[1] = byte(len(pubKeyHash))
+		copy(redeemScript[2:], pubKeyHash)
+		hash := btcutil.Hash160(redeemScript)
+		a, err = btcutil.NewAddressScriptHashFromHash(hash, p.Params)
+	case bchain.P2WPKH:
+		a, err = btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(extKey[0].PubKeyBytes()), p.Params)
+	case bchain.P2TR:
+		a, err = p.taprootAddrFromExtKey(extKey[0])
+	default:
+		return nil, errors.New("Unsupported xpub descriptor type")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return txscript.PayToAddrScript(a)
+}
+
 func (p *BitcoinLikeParser) xpubDescriptorFromXpub(xpub string) (*bchain.XpubDescriptor, error) {
 	var descriptor bchain.XpubDescriptor
 	extKey, err := hdkeychain.NewKeyFromString(xpub, p.Params.Base58CksumHasher)
@@ -565,6 +621,39 @@ func (p *BitcoinLikeParser) DeriveAddressDescriptorsFromTo(descriptor *bchain.Xp
 			return nil, err
 		}
 		ad[index-fromIndex], err = p.addrDescFromExtKey(indexExtKey, descriptor)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return ad, nil
+}
+
+// DeriveAddressDescriptorsFromTo derives address descriptors from given xpub for addresses in index range
+func (p *BitcoinLikeParser) DeriveAddressDescriptorsMultiSigFromTo(descriptor []*bchain.XpubDescriptor, change uint32, fromIndex uint32, toIndex uint32) ([]bchain.AddressDescriptor, error) {
+	if toIndex <= fromIndex {
+		return nil, errors.New("toIndex<=fromIndex")
+	}
+	var changeExtKey []*hdkeychain.ExtendedKey
+
+	for i := 0; i < len(descriptor); i++ { 
+		changeExtKey_, err := descriptor[i].ExtKey.(*hdkeychain.ExtendedKey).Derive(change)
+		if err != nil {
+			return nil, err
+		}
+		changeExtKey = append(changeExtKey, changeExtKey_)
+	}
+	ad := make([]bchain.AddressDescriptor, toIndex-fromIndex)
+	for index := fromIndex; index < toIndex; index++ {
+		var indexExtKey  []*hdkeychain.ExtendedKey
+		for i := 0; i < len(descriptor); i++ { 
+			indexExtKey_, err := changeExtKey[i].Derive(index)
+			if err != nil {
+				return nil, err
+			}
+			indexExtKey = append(indexExtKey, indexExtKey_)
+		}
+		var err error
+		ad[index-fromIndex], err = p.addrDescFromExtKeyMultiSig(indexExtKey, descriptor)
 		if err != nil {
 			return nil, err
 		}

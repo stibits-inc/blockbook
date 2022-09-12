@@ -310,6 +310,11 @@ func (p *BaseParser) DeriveAddressDescriptorsFromTo(descriptor *XpubDescriptor, 
 	return nil, errors.New("Not supported")
 }
 
+// DeriveAddressDescriptorsFromTo is unsupported
+func (p *BaseParser) DeriveAddressDescriptorsMultiSigFromTo(descriptor []*XpubDescriptor, change uint32, fromIndex uint32, toIndex uint32) ([]AddressDescriptor, error) {
+	return nil, errors.New("Not supported")
+}
+
 // EthereumTypeGetErc20FromTx is unsupported
 func (p *BaseParser) EthereumTypeGetErc20FromTx(tx *Tx) ([]Erc20Transfer, error) {
 	return nil, errors.New("Not supported")
