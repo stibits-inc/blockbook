@@ -1080,45 +1080,60 @@ func (s *PublicServer) apiUtxo(r *http.Request, apiVersion int) (interface{}, er
 	var err error
 	var unusedIntAddress *string
 	var balanceSat *api.Amount
+	var desc []string
+	var pk XpubMsg
 
-	if i := strings.LastIndex(r.URL.Path, "utxo/"); i > 0 {
-		desc := r.URL.Path[i+5:]
-		onlyConfirmed := false
-		c := r.URL.Query().Get("confirmed")
-		a := r.URL.Query().Get("assets")
-
-		if len(c) > 0 {
-			onlyConfirmed, err = strconv.ParseBool(c)
-			if err != nil {
-				return nil, api.NewAPIError("Parameter 'confirmed' cannot be converted to boolean", true)
-			}
-
-		}
-		includeAssets := false
-		if len(a) > 0 {
-			var err error
-			includeAssets, err = strconv.ParseBool(a)
-			if err != nil {
-				return nil, api.NewAPIError("Parameter 'assets' cannot be converted to boolean", true)
-			}
-		}
-		gap, ec := strconv.Atoi(r.URL.Query().Get("gap"))
-		if ec != nil {
-			gap = 0
+	if r.Method == http.MethodPost {
+		data, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			return nil, api.NewAPIError("Missing data", true)
 		}
 
-		utxo, unusedIntAddress, balanceSat, err = s.api.GetXpubUtxo(desc, onlyConfirmed, gap, includeAssets)
-
-		if err == nil {
-			s.metrics.ExplorerViews.With(common.Labels{"action": "api-xpub-utxo"}).Inc()
-		} else {
-			utxo, err = s.api.GetAddressUtxo(desc, onlyConfirmed)
-			s.metrics.ExplorerViews.With(common.Labels{"action": "api-address-utxo"}).Inc()
+		err = json.NewDecoder(bytes.NewBuffer(data)).Decode(&pk)
+		if err != nil {
+			return nil, api.NewAPIError("Missing json data", true)
 		}
-		if err == nil && apiVersion == apiV1 {
-			return s.api.AddressUtxoToV1(utxo), nil
+		desc = pk.Xpubs
+	} else if i := strings.LastIndex(r.URL.Path, "utxo/"); i > 0 {
+		desc = append(desc, r.URL.Path[i+5:])
+	}
+	
+	onlyConfirmed := false
+	c := r.URL.Query().Get("confirmed")
+	a := r.URL.Query().Get("assets")
+
+	if len(c) > 0 {
+		onlyConfirmed, err = strconv.ParseBool(c)
+		if err != nil {
+			return nil, api.NewAPIError("Parameter 'confirmed' cannot be converted to boolean", true)
+		}
+
+	}
+	includeAssets := false
+	if len(a) > 0 {
+		var err error
+		includeAssets, err = strconv.ParseBool(a)
+		if err != nil {
+			return nil, api.NewAPIError("Parameter 'assets' cannot be converted to boolean", true)
 		}
 	}
+	gap, ec := strconv.Atoi(r.URL.Query().Get("gap"))
+	if ec != nil {
+		gap = 0
+	}
+
+	utxo, unusedIntAddress, balanceSat, err = s.api.GetXpubUtxo(desc, onlyConfirmed, gap, includeAssets)
+
+	if err == nil {
+		s.metrics.ExplorerViews.With(common.Labels{"action": "api-xpub-utxo"}).Inc()
+	} else {
+		utxo, err = s.api.GetAddressUtxo(desc[0], onlyConfirmed)//TODO MEHDI MULTISIG
+		s.metrics.ExplorerViews.With(common.Labels{"action": "api-address-utxo"}).Inc()
+	}
+	if err == nil && apiVersion == apiV1 {
+		return s.api.AddressUtxoToV1(utxo), nil
+	}
+	
 	utxoInfo := map[string]interface{}{
 		"unusedIntAddr": unusedIntAddress,
 		"balance"      : balanceSat,

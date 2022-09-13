@@ -429,7 +429,6 @@ func (p *BitcoinLikeParser) addrDescFromExtKeyMultiSig(extKey []*hdkeychain.Exte
 
 			hash := btcutil.Hash160(redeemScript)
 			a, err = btcutil.NewAddressScriptHashFromHash(hash, p.Params)
-			glog.Infof("addrDescFromExtKeyMultiSig Address msg  = %v",  a)
 		}
 	case bchain.P2SHWPKH:
 		// redeemScript <witness version: OP_0><len pubKeyHash: 20><20-byte-pubKeyHash>

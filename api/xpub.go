@@ -722,7 +722,7 @@ func (w *Worker) GetXpubMultiSigAddress(xpub []string, page int, txsOnPage int, 
 		uBalSat        big.Int
 		unconfirmedTxs int
 	)
-    glog.Info("getXpubDataMultiSig start")
+
 	var xd [] *bchain.XpubDescriptor
 	for i := range xpub {
 		xdesc, err := w.chainParser.ParseXpub(xpub[i])
@@ -737,7 +737,6 @@ func (w *Worker) GetXpubMultiSigAddress(xpub []string, page int, txsOnPage int, 
 		return nil, err
 	}
 
-	glog.Info("getXpubDataMultiSig end")
 	// setup filtering of txids
 	var txidFilter func(txid *xpubTxid, ad *xpubAddress) bool
 	if !(filter.FromHeight == 0 && filter.ToHeight == 0 && filter.Vout == AddressFilterVoutOff) {
@@ -937,14 +936,19 @@ func (w *Worker) GetXpubMultiSigAddress(xpub []string, page int, txsOnPage int, 
 }
 
 // GetXpubUtxo returns unspent outputs for given xpub
-func (w *Worker) GetXpubUtxo(xpub string, onlyConfirmed bool, gap int, assets bool) (Utxos, *string, *Amount, error) {
+func (w *Worker) GetXpubUtxo(xpub []string, onlyConfirmed bool, gap int, assets bool) (Utxos, *string, *Amount, error) {
 	start := time.Now()
-	xd, err := w.chainParser.ParseXpub(xpub)
-	if err != nil {
-		return nil, nil, nil, err
+
+	var xd [] *bchain.XpubDescriptor
+	for i := range xpub {
+		xdesc, err := w.chainParser.ParseXpub(xpub[i])
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		xd = append(xd, xdesc)
 	}
 
-	data, _, inCache, err := w.getXpubData(xd, 0, 1, AccountDetailsBasic, &AddressFilter{
+	data, _, inCache, err := w.getXpubDataMultiSig(xd, 0, 1, AccountDetailsBasic, &AddressFilter{
 		Vout:          AddressFilterVoutOff,
 		OnlyConfirmed: onlyConfirmed,
 	}, gap)
@@ -986,7 +990,7 @@ func (w *Worker) GetXpubUtxo(xpub string, onlyConfirmed bool, gap int, assets bo
 		}
 	}
 	sort.Stable(r)
-	glog.Info("GetXpubUtxo ", xpub[:xpubLogPrefix], ", cache ", inCache, ", ", len(r), " utxos,  ", time.Since(start))
+	glog.Info("GetXpubUtxo ", xpub[0][:xpubLogPrefix], ", cache ", inCache, ", ", len(r), " utxos,  ", time.Since(start))//TODO MEHDI MULTISIG
 	totalBalanceSat := (*Amount)(&data.balanceSat)
 	return r, unusedInternalAddr, totalBalanceSat, nil
 }
