@@ -191,6 +191,7 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 	serveMux.HandleFunc(path+"api/v2/tx/", s.jsonHandler(s.apiTx, apiV2))
 	serveMux.HandleFunc(path+"api/v2/address/", s.jsonHandler(s.apiAddress, apiV2))
 	serveMux.HandleFunc(path+"api/v2/xpub/", s.jsonHandler(s.apiXpub, apiV2))
+	serveMux.HandleFunc(path+"api/v2/xpubBtc/", s.jsonHandler(s.apiXpubBtc, apiV2))
 	serveMux.HandleFunc(path+"api/v2/utxo/", s.jsonHandler(s.apiUtxo, apiV2))
 	serveMux.HandleFunc(path+"api/v2/block/", s.jsonHandler(s.apiBlock, apiV2))
 	serveMux.HandleFunc(path+"api/v2/rawblock/", s.jsonHandler(s.apiBlockRaw, apiDefault))
@@ -1028,6 +1029,49 @@ func (s *PublicServer) apiAddress(r *http.Request, apiVersion int) (interface{},
 	address, err = s.api.GetAddress(addressParam, page, pageSize, details, filter)
 	if err == nil && apiVersion == apiV1 {
 		return s.api.AddressToV1(address), nil
+	}
+	return address, err
+}
+
+func (s *PublicServer) apiXpubBtc(r *http.Request, apiVersion int) (interface{}, error) {
+	var xpub []string
+	var pk XpubMsg
+
+	if r.Method == http.MethodPost {
+		data, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			return nil, api.NewAPIError("Missing data", true)
+		}
+
+		err = json.NewDecoder(bytes.NewBuffer(data)).Decode(&pk)
+		if err != nil {
+			return nil, api.NewAPIError("Missing json data", true)
+		}
+
+		xpub = pk.Xpubs
+		
+	} else {
+		i := strings.LastIndex(r.URL.Path, "xpub/")
+		if i > 0 {
+			xpub = append(xpub, r.URL.Path[i+5:])
+		}
+	}
+	
+	if len(xpub[0]) == 0{ //TODO MEHDI : MULTISIG
+		return nil, api.NewAPIError("Missing xpub", true)
+	}
+
+	var address *api.Address
+	var err error
+	s.metrics.ExplorerViews.With(common.Labels{"action": "api-xpub"}).Inc()
+	page, pageSize, details, filter, _, gap := s.getAddressQueryParams(r, api.AccountDetailsTxidHistory, txsInAPI)
+	//address, err = s.api.GetXpubAddress(xpub, page, pageSize, details, filter, gap)
+	address, err = s.api.GetXpubBtcAddress(xpub, page, pageSize, details, filter, gap) //TODO MEHDI : Bip44 & Bip84 BTC xpubs
+	if err == nil && apiVersion == apiV1 {
+		return s.api.AddressToV1(address), nil
+	}
+	if err == api.ErrUnsupportedXpub {
+		err = api.NewAPIError("XPUB functionality is not supported", true)
 	}
 	return address, err
 }

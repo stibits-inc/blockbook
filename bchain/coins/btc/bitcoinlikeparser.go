@@ -671,7 +671,8 @@ func (p *BitcoinLikeParser) DerivationBasePath(descriptor *bchain.XpubDescriptor
 	}
 	c = strconv.Itoa(int(cn)) + c
 	if extKey.Depth() != 3 {
-		return "unknown/" + c, nil
+		//return "unknown/" + c, nil
+		return "m/" + descriptor.Bip + "'/" + c, nil 
 	}
 	return "m/" + descriptor.Bip + "'/" + strconv.Itoa(int(p.Slip44)) + "'/" + c, nil
 }
